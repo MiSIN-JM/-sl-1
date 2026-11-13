@@ -1,0 +1,1185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scent Layering Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,300;6..72,400&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* Layout: one iPad frame (1180×820) scaled to fit; screens are stacked views, takeovers are morphing layers on top. Single wireframe palette by choice. */
+  :root{
+    --page:#F7F2E7; --panel:#EDE5D5; --card:#FCF9EE;
+    --ink:#292929; --ink-2:#55524D; --ink-3:#8C877E; --chip:#F3ECDF;
+    --serif:"Newsreader",Georgia,serif; --sans:"DM Sans",system-ui,sans-serif;
+    --t-h1:56px; --t-h2:42px; --t-h3:32px; --t-h4:24px; --t-body-l:22px; --t-body:20px; --t-ui:16px;
+    --ease:cubic-bezier(.72,0,.18,1); --ease-out:cubic-bezier(.2,.8,.2,1); --dur:.7s;
+    color-scheme:light;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--page);height:100%}
+  body{font-family:var(--serif);color:var(--ink);-webkit-font-smoothing:antialiased;overflow:hidden}
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+  button:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+
+  /* prototype controls (not part of the UI) */
+  .jump{position:fixed;top:10px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:4px 4px 4px 14px;background:#F1EADC;border-radius:22px;z-index:100;font-family:var(--sans);font-size:13px;color:var(--ink-3);white-space:nowrap}
+  .jump button{padding:7px 14px;border-radius:18px;color:var(--ink-2)}
+  .jump button:hover{background:var(--card)}
+
+  .stage{position:absolute;left:50%;top:50%;width:1180px;height:820px;transform-origin:center}
+  .ipad{width:100%;height:100%;background:var(--page);padding:28px;border-radius:24px}
+  .panel{position:relative;height:100%;background:var(--panel);border-radius:40px;overflow:hidden}
+
+  /* ---------- shared ---------- */
+  .pill{font-family:var(--sans);font-size:var(--t-ui);background:#F6F0E4;height:52px;padding:0 22px;border-radius:26px;display:inline-flex;align-items:center;gap:10px}
+  .pill svg{width:18px;height:18px}
+  .pill[disabled]{opacity:.55;cursor:default}
+  .glass{background:rgba(252,249,238,.5);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+  .kick{font-family:var(--sans);font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2)}
+  .lbl{font-family:var(--sans);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2);display:block;margin-bottom:6px}
+  .tags{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .tag{font-family:var(--sans);font-size:14px;color:var(--ink-2);background:var(--chip);padding:6px 12px;border-radius:14px}
+  .glass-tag{background:rgba(252,249,238,.45);color:var(--ink)}
+  .burst{display:block;height:100%;width:auto;color:var(--ink)}
+  .burst .w{opacity:.22}.burst .p{opacity:.5}
+  h1{font-weight:300;font-size:var(--t-h1);line-height:1.05;letter-spacing:-.01em;text-align:center;text-wrap:balance}
+  .sub{font-size:var(--t-body);color:var(--ink-2);margin-top:8px;text-align:center}
+
+  /* header pattern: progress top-left, logo centre, single Back/Restart top-right */
+  .top{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;min-height:52px}
+  .top>:first-child{justify-self:start}.top>:last-child{justify-self:end}
+  .logo{text-align:center;line-height:1}
+  .logo b{display:block;font-weight:400;font-size:20px;letter-spacing:.24em}
+  .logo span{display:block;font-family:var(--sans);font-size:8px;letter-spacing:.42em;margin-top:6px;color:var(--ink-2)}
+  .prog{display:flex;flex-direction:column;gap:10px}
+  .bars{display:flex;gap:6px}.bars i{width:36px;height:3px;border-radius:2px;background:rgba(41,41,41,.15)}.bars i.on{background:var(--ink)}
+
+  .view{position:absolute;inset:0;padding:32px 48px 36px;display:flex;flex-direction:column;transition:opacity .35s;isolation:isolate} /* keeps card z-indexes inside the screen, below takeover layers */
+  .view.hidden{opacity:0;pointer-events:none}
+
+  /* drag surfaces: everything settles back a touch while a finger is down */
+  .dragzone{touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab}
+  .dragzone.held{cursor:grabbing}
+  .held-scale{position:absolute;inset:0;transition:transform .45s cubic-bezier(.2,.7,.2,1)}
+  .held>.held-scale{transform:scale(.97)}
+
+  /* ---------- ATTRACT ---------- */
+  #s-attract{padding:0;cursor:pointer;align-items:center;justify-content:center}
+  .orb{position:absolute;border-radius:50%;animation:drift var(--t) ease-in-out infinite alternate}
+  @keyframes drift{to{transform:translate(var(--dx),var(--dy)) scale(var(--s))}}
+  .attract-copy{position:relative;z-index:2;text-align:center;display:flex;flex-direction:column;align-items:center;gap:28px}
+  .attract-copy .logo b{font-size:30px}.attract-copy .logo span{font-size:11px}
+  .attract-copy h1{font-size:72px;max-width:9em}
+  .touch{font-family:var(--sans);font-size:18px;font-weight:500;height:64px;padding:0 32px;border-radius:32px;background:var(--ink);color:var(--card);display:inline-flex;align-items:center;animation:pulse 2.4s ease-in-out infinite}
+  @keyframes pulse{50%{transform:scale(1.05)}}
+
+  /* ---------- LANDING ---------- */
+  .head{margin-top:28px}
+  .opts{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;min-height:0}
+  .opt{background:var(--card);border-radius:36px;padding:24px 24px 28px;display:flex;flex-direction:column;text-align:left;box-shadow:0 18px 40px -24px rgba(60,45,25,.35);transition:transform .15s;min-height:0}
+  .opt:active{transform:scale(.985)}
+  .opt .img{flex:1;min-height:0;border-radius:24px;position:relative;overflow:hidden}
+  .opt .img .h{position:absolute;left:0;right:0;height:50%}
+  .opt .img .h.t{top:0}.opt .img .h.b{bottom:0}
+  .opt .img .burst{position:absolute;left:50%;top:50%;height:60%;transform:translate(-50%,-50%)}
+  .opt .mosaic{position:absolute;inset:18px;display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  .opt .mosaic i{border-radius:14px}
+  .opt .body{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-top:22px}
+  .opt h3{font-weight:300;font-size:var(--t-h3);line-height:1.1}
+  .opt p{font-family:var(--sans);font-size:16px;color:var(--ink-2);margin-top:8px;max-width:30ch}
+  .go{flex:none;width:56px;height:56px;border-radius:50%;background:var(--ink);display:grid;place-items:center}
+  .go svg{width:22px;height:22px;stroke:var(--card)}
+  .enter{animation:rise .55s var(--ease) both;animation-delay:calc(var(--d) * 80ms + 200ms)}
+  @keyframes rise{from{opacity:0;transform:translateY(28px)}}
+
+  /* ---------- STEP 1 · SIGNATURE CAROUSEL (10 scents) ---------- */
+  #s-base h1,#s-comb h1{margin-top:14px}
+  #s-base{transition:opacity .35s,padding .7s var(--ease)}
+  #s-base .track{transition:transform .7s var(--ease)}
+  .car{position:relative;flex:1;min-height:0;margin:6px -48px 0;overflow:hidden}
+  .track{position:absolute;inset:0}
+  .bcard{position:absolute;left:50%;top:50%;width:300px;height:400px;margin:-200px 0 0 -150px;background:var(--card);border-radius:30px;padding:16px 16px 22px;
+         display:flex;flex-direction:column;box-shadow:0 22px 44px -26px rgba(60,45,25,.45);will-change:transform}
+  .bcard .img{flex:1;min-height:0;border-radius:20px;display:flex;align-items:center;justify-content:center;padding:22px;overflow:hidden}
+  .bcard h3{font-weight:300;font-size:26px;line-height:1.08;margin-top:14px;min-height:2.16em;display:flex;align-items:flex-end}
+  .bcard .tags{margin-top:10px;height:32px;overflow:hidden;opacity:0;transition:opacity .25s}
+  .bcard.centre .tags{opacity:1}
+  .plus{position:absolute;left:50%;bottom:-26px;width:52px;height:52px;margin-left:-26px;border-radius:50%;background:var(--ink);display:grid;place-items:center;
+        transform:scale(0);transition:transform .35s cubic-bezier(.3,1.5,.5,1)}
+  .plus svg{width:22px;height:22px;stroke:var(--card)}
+  .bcard.centre .plus{transform:scale(1)}
+  .ctrl{flex:none;display:grid;grid-template-columns:64px 1fr 64px;align-items:center;margin-top:10px}
+  .larrow{width:64px;height:56px;display:grid;place-items:center;transition:opacity .2s}
+  .larrow svg{width:56px;height:40px;stroke:var(--ink)}
+  .larrow[disabled]{opacity:.2;cursor:default}
+  .dots{display:flex;justify-content:center;gap:2px}
+  .dots button{width:24px;height:24px;display:grid;place-items:center}
+  .dots i{width:7px;height:7px;border-radius:50%;background:rgba(41,41,41,.2);transition:transform .2s,background .2s}
+  .dots .on i{background:var(--ink);transform:scale(1.5)}
+
+  /* ---------- STEP 2 · COMBINER STACK (3 scents) ---------- */
+  #s-comb{padding-bottom:0}
+  .stack{position:relative;flex:none;height:430px;margin:12px -48px 0}
+  .scard{position:absolute;left:50%;top:calc(50% + 20px);width:330px;height:340px;background:var(--card);border-radius:30px;padding:16px 16px 20px;
+         display:flex;flex-direction:column;box-shadow:0 24px 50px -26px rgba(60,45,25,.5);will-change:transform}
+  .scard .img{flex:1;min-height:0;border-radius:20px;display:flex;align-items:center;justify-content:center;padding:20px;position:relative;overflow:hidden}
+  .scard h3{font-weight:300;font-size:28px;line-height:1.05;margin-top:14px}
+  .scard .line{font-size:19px;color:var(--ink-2);margin-top:2px}
+  .scard .tags{margin-top:10px}
+  .scard .plus{bottom:-24px}
+  .scard.front .plus{transform:scale(1)}
+  .scard:not(.front) .img,.scard:not(.front) h3,.scard:not(.front) .line,.scard:not(.front) .tags{opacity:.55;transition:opacity .3s}
+  .sarrow{position:absolute;top:calc(50% + 20px);margin-top:-28px;z-index:20}
+  .sarrow.l{left:calc(50% - 300px)}.sarrow.r{right:calc(50% - 300px)}
+  #s-comb .dots{margin-top:6px}
+  .match{position:absolute;left:12px;top:12px;z-index:2;font-family:var(--sans);font-size:12px;font-weight:500;letter-spacing:.02em;
+         background:var(--ink);color:var(--card);padding:6px 10px 6px 8px;border-radius:14px;display:inline-flex;align-items:center;gap:6px}
+  .match svg{width:12px;height:12px}
+
+  /* ---------- EXPLORE OUR PAIRINGS (4 pairings, shown all at once) ---------- */
+  #s-sug{padding-bottom:28px}
+  #s-sug h1{margin-top:14px}
+  .sug{flex:1;min-height:0;margin-top:22px}
+  .sitem{position:relative;background:var(--card);border-radius:30px;text-align:left;display:flex;box-shadow:0 18px 40px -24px rgba(60,45,25,.4);transition:transform .15s;min-height:0;min-width:0}
+  .sitem:active{transform:scale(.985)}
+  .sw2{position:relative;overflow:hidden;border-radius:20px;min-height:0}
+  .sw2 .h{position:absolute;top:0;bottom:0;width:50%}
+  .sw2 .h.l{left:0}.sw2 .h.r{right:0}
+  .sw2 .burst{position:absolute;left:50%;top:50%;height:58%;transform:translate(-50%,-50%)}
+  .sitem h3{font-weight:300;font-size:28px;line-height:1.08}
+  .sitem .who{font-family:var(--sans);font-size:14px;line-height:1.45;color:var(--ink-2);margin-top:6px}
+  .sitem .feel{font-weight:300;font-style:italic;font-size:22px;color:var(--ink-2)}
+  .sitem .go{width:48px;height:48px}
+  .sitem .go svg{width:20px;height:20px}
+  .flag{position:absolute;left:14px;top:14px;z-index:2;font-family:var(--sans);font-size:13px;font-weight:500;background:var(--ink);color:var(--card);padding:7px 12px;border-radius:14px}
+  /* A · row of four */
+  .lay-row{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;height:100%}
+  .lay-row .sitem{flex-direction:column;padding:14px 14px 20px}
+  .lay-row .sw2{flex:1}
+  .lay-row .txt{margin-top:14px;padding-right:56px;min-height:110px}
+  .lay-row .go{position:absolute;right:16px;bottom:20px}
+  /* B · stacked bands */
+  .lay-bands{display:flex;flex-direction:column;gap:12px;height:100%}
+  .lay-bands .sitem{flex:1;align-items:center;gap:28px;padding:12px 24px 12px 12px;border-radius:26px}
+  .lay-bands .sw2{width:150px;align-self:stretch;flex:none;border-radius:18px}
+  .lay-bands .sw2 .burst{height:70%}
+  .lay-bands .txt{flex:1;display:grid;grid-template-columns:1.2fr 1fr;align-items:center;gap:24px}
+  .lay-bands .who{margin-top:2px}
+  .lay-bands .go{flex:none}
+  /* C · featured + three */
+  .lay-feat{display:grid;grid-template-columns:1.2fr 1fr;grid-template-rows:repeat(3,minmax(0,1fr));gap:16px;height:100%}
+  .lay-feat .sitem:first-child{grid-row:1/4;flex-direction:column;padding:16px 16px 22px}
+  .lay-feat .sitem:first-child .sw2{flex:1}
+  .lay-feat .sitem:first-child .txt{margin-top:16px;padding-right:60px}
+  .lay-feat .sitem:first-child h3{font-size:40px}
+  .lay-feat .sitem:first-child .go{position:absolute;right:20px;bottom:22px}
+  .lay-feat .sitem:not(:first-child){align-items:center;gap:20px;padding:12px 22px 12px 12px}
+  .lay-feat .sitem:not(:first-child) .sw2{width:118px;align-self:stretch;flex:none;border-radius:18px}
+  .lay-feat .sitem:not(:first-child) .txt{flex:1}
+  .lay-feat .sitem:not(:first-child) .go{flex:none}
+  /* D · swipeable carousel with pagination */
+  .scar-wrap{flex:1;min-height:0;margin-top:14px;display:flex;flex-direction:column}
+  .scar-wrap[hidden]{display:none!important}
+  .pcar{position:relative;flex:1;min-height:0;margin:0 -48px;overflow:hidden}
+  .pslide{position:absolute;left:50%;top:50%;width:580px;height:330px;margin:-165px 0 0 -290px;background:var(--card);border-radius:30px;padding:14px;
+          display:flex;gap:4px;box-shadow:0 22px 44px -26px rgba(60,45,25,.45);will-change:transform}
+  .pslide .sw2{width:250px;flex:none}
+  .pslide .txt{flex:1;min-width:0;display:flex;flex-direction:column;padding:14px 14px 8px 24px}
+  .pslide h3{font-weight:300;font-size:36px;line-height:1.04;margin-top:6px}
+  .pslide .who{font-family:var(--sans);font-size:14px;line-height:1.45;color:var(--ink-2);margin-top:8px}
+  .pslide .feel{font-weight:300;font-style:italic;font-size:22px;color:var(--ink-2);margin-top:10px}
+  .pslide .open{margin-top:auto;align-self:flex-start;font-family:var(--sans);font-size:15px;font-weight:500;height:48px;padding:0 6px 0 20px;border-radius:24px;
+                background:var(--ink);color:var(--card);display:inline-flex;align-items:center;gap:12px;opacity:0;transform:translateY(6px);transition:opacity .25s,transform .25s}
+  .pslide .open i{width:36px;height:36px;border-radius:50%;background:var(--card);color:var(--ink);display:grid;place-items:center}
+  .pslide .open svg{width:16px;height:16px}
+  .pslide.centre .open{opacity:1;transform:none}
+  .scar-wrap .ctrl{margin-top:8px}
+  .count{font-family:var(--sans);font-size:13px;letter-spacing:.1em;color:var(--ink-2);text-align:center;margin-top:2px;font-variant-numeric:tabular-nums}
+  /* CTA to the create path */
+  .make{flex:none;margin-top:18px;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:14px 14px 14px 32px;border-radius:30px;background:rgba(252,249,238,.55)}
+  .make h3{font-weight:300;font-size:26px;line-height:1.1}
+  .make p{font-family:var(--sans);font-size:15px;color:var(--ink-2);margin-top:4px}
+  .make .cta{height:64px;padding:0 10px 0 28px;font-size:18px;gap:18px}
+  .make .cta .dot{width:44px;height:44px}
+  .make .cta .dot svg{width:20px;height:20px}
+  .jump .sep{width:1px;height:18px;background:rgba(41,41,41,.15);margin:0 6px}
+  .jump button.on{background:var(--ink);color:var(--card)}
+
+  /* ---------- takeover layers ---------- */
+  .layer{position:absolute;z-index:10;overflow:hidden;
+         transition:top var(--dur) var(--ease),left var(--dur) var(--ease),width var(--dur) var(--ease),
+                    height var(--dur) var(--ease),border-radius var(--dur) var(--ease),background-color var(--dur) var(--ease)}
+  .layer.c{z-index:11}
+  .half{position:absolute;top:0;bottom:150px;width:50%;opacity:0;transition:opacity .6s var(--ease)}
+  .half.l{left:0}.half.r{right:0}
+  .layer.open .half{opacity:1}
+  .lc{position:absolute;inset:0;opacity:0;transition:opacity .3s}
+  .show>.lc,.lc.show{opacity:1}
+
+  .det{padding:32px 48px 40px;display:flex;flex-direction:column}
+  .tbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;position:relative;z-index:2}
+  .tbar>:first-child{justify-self:start}.tbar>:last-child{justify-self:end}
+  .tmain{flex:1;margin-top:28px;position:relative;z-index:2;display:flex;flex-direction:column;align-items:flex-start}
+  .det h2{font-weight:300;font-size:var(--t-h1);line-height:1.04;letter-spacing:-.01em;max-width:8.5em}
+  .det .match{position:static;margin-top:14px;font-size:14px;padding:8px 14px 8px 12px}
+  .tfoot{position:relative;z-index:2;max-width:430px;display:flex;flex-direction:column;align-items:flex-start;gap:24px}
+  .desc{font-size:var(--t-body-l);line-height:1.35}
+  .select{font-family:var(--sans);font-size:18px;font-weight:500;height:64px;padding:0 10px 0 28px;border-radius:32px;background:var(--card);
+          display:inline-flex;align-items:center;gap:18px;box-shadow:0 10px 30px -12px rgba(0,0,0,.25)}
+  .select .dot{width:44px;height:44px;border-radius:50%;background:var(--ink);display:grid;place-items:center}
+  .select .dot svg{width:20px;height:20px;stroke:var(--card)}
+  .big{position:absolute;right:9%;top:50%;height:62%;transform:translateY(-50%) scale(.85);transition:transform 1s var(--ease)}
+  .show .big{transform:translateY(-50%) scale(1)}
+  .big .burst{animation:spin 90s linear infinite}
+  @keyframes spin{to{rotate:360deg}}
+
+  /* signature band */
+  .band{display:flex;align-items:center;justify-content:space-between;padding:0 48px}
+  .band .id{display:flex;align-items:center;gap:20px}
+  .band .mini{height:72px}
+  .band h3{font-weight:300;font-size:var(--t-h3);line-height:1}
+
+  /* pairing screen: signature left, combiner right, bottom bar */
+  .pair .tbar{position:absolute;left:48px;right:48px;top:32px}
+  .p-col{position:absolute;top:0;bottom:150px;width:50%;padding:0 48px 44px;display:flex;flex-direction:column;justify-content:flex-end}
+  .p-col.l{left:0}.p-col.r{left:50%}
+  .p-col h3{font-weight:300;font-size:var(--t-h3);line-height:1.05;position:relative;z-index:2}
+  .p-col .lbl{position:relative;z-index:2}
+  .p-col .word{font-weight:300;font-style:italic;font-size:var(--t-h1);line-height:1;margin-top:10px;position:relative;z-index:2;
+               opacity:0;transform:translateY(12px);transition:opacity .6s .35s,transform .6s var(--ease) .35s}
+  .p-col.r .word{transition-delay:.5s}
+  .show .p-col .word,.lc.show .p-col .word{opacity:1;transform:none}
+  .p-col .hb{position:absolute;left:50%;top:17%;height:40%;transform:translateX(-50%)}
+  .plusmark{position:absolute;left:50%;top:calc((100% - 150px)/2);width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;
+        background:var(--card);display:grid;place-items:center;font-size:30px;font-weight:300;z-index:3;box-shadow:0 8px 24px -10px rgba(0,0,0,.3)}
+  .p-bar{position:absolute;left:0;right:0;bottom:0;height:150px;background:var(--card);display:flex;align-items:center;justify-content:space-between;
+         gap:40px;padding:0 48px;transform:translateY(100%);transition:transform .6s var(--ease)}
+  .show .p-bar,.lc.show .p-bar{transform:none}
+  .p-bar .line{font-weight:300;font-size:30px;line-height:1.2;max-width:640px}
+  .cta{font-family:var(--sans);font-size:20px;font-weight:500;height:80px;padding:0 12px 0 40px;border-radius:40px;background:var(--ink);color:var(--card);
+       display:inline-flex;align-items:center;gap:24px;flex:none}
+  .cta .dot{width:56px;height:56px;border-radius:50%;background:var(--card);display:grid;place-items:center;color:var(--ink)}
+  .cta .dot svg{width:22px;height:22px}
+
+  /* dispense */
+  .layer.disp{z-index:20}
+  .blend{position:absolute;inset:0;opacity:0;transition:opacity .8s var(--ease)}
+  .layer.open .blend{opacity:1}
+  .dsp{display:flex;flex-direction:column;align-items:center;padding:32px 48px 40px}
+  .dsp .tbar{width:100%}
+  .dsp .locked [data-act]{opacity:0;pointer-events:none}
+  .dsp .tbar button{transition:opacity .25s}
+  .dsp h2{font-weight:300;font-size:var(--t-h2);line-height:1.1;text-align:center;margin-top:22px;min-height:1.1em}
+  .dsp .dsub{font-size:var(--t-body);color:var(--ink-2);text-align:center;margin-top:10px;min-height:1.4em;max-width:40ch}
+  .holdwrap{position:relative;width:280px;height:280px;margin-top:26px;display:grid;place-items:center;touch-action:none;user-select:none;-webkit-user-select:none}
+  .ring{position:absolute;inset:0;transform:rotate(-90deg)}
+  .ring circle{fill:none;stroke-width:4}
+  .ring .trk{stroke:rgba(41,41,41,.14)} .ring .prg{stroke:var(--ink);stroke-linecap:round}
+  .holdbtn{width:206px;height:206px;border-radius:50%;background:var(--ink);color:var(--card);display:grid;place-items:center;position:relative;overflow:hidden;
+           transition:transform .35s cubic-bezier(.3,1.4,.5,1),box-shadow .35s;box-shadow:0 24px 50px -18px rgba(0,0,0,.45);cursor:pointer}
+  .holdbtn .bb{position:absolute;inset:26px;opacity:.18;transition:opacity .4s}
+  .holdbtn .bb .burst{color:var(--card);width:100%;height:100%}
+  .holdbtn span{position:relative;font-family:var(--sans);font-size:20px;font-weight:500}
+  .holdwrap.holding .holdbtn{transform:scale(.94);box-shadow:0 10px 24px -12px rgba(0,0,0,.5)}
+  .holdwrap.holding .holdbtn .bb{opacity:.45}
+  .holdwrap.holding .bb .burst{animation:spin 6s linear infinite}
+  .holdwrap.done .holdbtn{background:var(--card);color:var(--ink)}
+  .holdwrap.done .holdbtn .bb{opacity:0}
+  .dfoot{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:14px}
+  .staffrow{font-family:var(--sans);font-size:15px;color:var(--ink);background:rgba(252,249,238,.65);padding:10px 18px 10px 14px;border-radius:20px;display:none;align-items:center;gap:10px}
+  .staffrow.on{display:inline-flex}
+  .staffrow i{width:9px;height:9px;border-radius:50%;background:var(--ink);animation:blink 1.4s ease-in-out infinite}
+  @keyframes blink{50%{opacity:.25}}
+  .dacts{display:flex;gap:12px;opacity:0;transform:translateY(12px);transition:opacity .5s,transform .5s var(--ease);pointer-events:none}
+  .dacts.on{opacity:1;transform:none;pointer-events:auto}
+
+  /* end screen: what would you like to do? */
+  .end{padding:32px 48px 36px;display:flex;flex-direction:column}
+  .viz{position:relative;flex:1;min-height:0;margin-top:16px;border:1.5px dashed rgba(41,41,41,.28);border-radius:32px;background:rgba(252,249,238,.45);overflow:hidden}
+  .viz i{position:absolute;top:50%;left:50%;width:250px;height:250px;margin:-138px 0 0 -125px;border-radius:50%;mix-blend-mode:multiply;opacity:0;transition:transform 1.1s var(--ease) .2s,opacity .6s .2s}
+  .viz i.a{transform:translateX(-200px)}.viz i.b{transform:translateX(200px)}
+  .show .viz i{opacity:1}.show .viz i.a{transform:translateX(-78px)}.show .viz i.b{transform:translateX(78px)}
+  .viz .vb{position:absolute;left:50%;top:50%;height:140px;margin-top:-13px;transform:translate(-50%,-50%)}
+  .viz .vnote{position:absolute;right:22px;top:20px;font-family:var(--sans);font-size:12px;letter-spacing:.06em;color:var(--ink-3)}
+  .viz .vname{position:absolute;left:28px;bottom:20px;z-index:2}
+  .viz .vname .lbl{text-align:left;margin:0 0 4px}
+  .pname{font-size:26px;font-weight:300;line-height:1.1}
+  .end h1{margin-top:18px;font-size:var(--t-h2)}
+  .ecards{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-top:18px}
+  .ecard{background:var(--card);border-radius:26px;padding:18px 20px;text-align:left;display:flex;align-items:center;gap:18px;min-height:100px;
+         box-shadow:0 18px 40px -24px rgba(60,45,25,.4);transition:transform .15s}
+  .ecard:active{transform:scale(.985)}
+  .ecard .ic{flex:none;width:52px;height:52px;border-radius:50%;background:var(--ink);color:var(--card);display:grid;place-items:center}
+  .ecard .ic svg{width:22px;height:22px}
+  .ecard h3{font-weight:300;font-size:28px;line-height:1.05}
+  .ecard p{font-family:var(--sans);font-size:14px;color:var(--ink-2);margin-top:4px;display:flex;align-items:center;gap:8px}
+  .ecard.notified p::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--ink);animation:blink 1.4s ease-in-out infinite}
+  .end .ecards{grid-template-columns:1fr;gap:16px;margin-top:28px}
+  .end .ecard{min-height:128px;padding:22px 26px;gap:22px}
+  .end .ecard h3{font-size:34px}
+  .end .ecard p{font-size:15px}
+  /* save & share: full-screen takeover */
+  .layer.sv-layer{z-index:25}
+  .sv{padding:32px 48px 36px;display:flex;flex-direction:column}
+  .svgrid{flex:1;min-height:0;margin-top:20px;display:grid;grid-template-columns:1.2fr 1fr;gap:40px}
+  .svgrid .viz{margin:0}
+  .svside{display:flex;flex-direction:column;justify-content:center;min-width:0}
+  .svside h2{font-weight:300;font-size:var(--t-h2);line-height:1.05;text-wrap:balance}
+  .svside .desc{color:var(--ink-2);margin-top:10px;font-size:var(--t-body)}
+  .svqr{display:flex;align-items:center;gap:22px;margin-top:26px}
+  .svqr .qr{width:180px;height:180px;flex:none;background:var(--card)}
+  .svqr p{font-family:var(--sans);font-size:15px;line-height:1.45;color:var(--ink-2)}
+  .svor{display:flex;align-items:center;gap:14px;margin:24px 0 12px;font-family:var(--sans);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+  .svor::before,.svor::after{content:"";flex:1;height:1px;background:rgba(41,41,41,.15)}
+  .svside .field{margin-top:0}
+  .svside .field input{background:var(--card)}
+  .svside .item{background:var(--card)}
+  .svside .row{margin-top:18px}
+  .svlink{margin-top:22px;align-self:flex-start;font-family:var(--sans);font-size:16px;display:inline-flex;align-items:center;gap:10px;color:var(--ink);
+          text-decoration:underline;text-underline-offset:4px;text-decoration-color:rgba(41,41,41,.35)}
+  .svlink svg{width:20px;height:20px}
+  .svbody{flex:1;min-height:0;display:flex;flex-direction:column;transition:opacity .25s}
+  .svbody.fade{opacity:0}
+  /* on-screen email keypad */
+  .kb-wrap{position:absolute;inset:0;z-index:40;pointer-events:none}
+  .kb-wrap.on{pointer-events:auto}
+  .kb-scrim{position:absolute;inset:0;background:rgba(41,41,41,.2);opacity:0;transition:opacity .35s}
+  .kb-wrap.on .kb-scrim{opacity:1}
+  .kb{position:absolute;left:0;right:0;bottom:0;background:#DDD4C1;border-radius:32px 32px 0 0;padding:18px 28px 24px;
+      transform:translateY(100%);transition:transform .45s var(--ease);box-shadow:0 -20px 40px -24px rgba(0,0,0,.35)}
+  .kb-wrap.on .kb{transform:none}
+  .kb-bar{display:flex;align-items:center;gap:14px;background:var(--card);border-radius:30px;padding:6px 6px 6px 24px;height:64px}
+  .kb-bar .lbl{margin:0;flex:none}
+  .kb-val{flex:1;min-width:0;font-family:var(--sans);font-size:22px;white-space:nowrap;overflow:hidden;text-overflow:clip}
+  .kb-val.empty span{color:var(--ink-3)}
+  .kb-val::after{content:"";display:inline-block;width:2px;height:26px;margin-left:2px;vertical-align:-5px;background:var(--ink);animation:blink 1s steps(1) infinite}
+  .kb-bar .pill{height:52px;flex:none}
+  .kb-bar .pill[disabled]{opacity:.35}
+  .kb-chips{display:flex;gap:8px;margin:12px 0 4px;flex-wrap:wrap}
+  .kb-chips button{font-family:var(--sans);font-size:15px;padding:9px 16px;border-radius:18px;background:rgba(252,249,238,.65)}
+  .kb-row{display:flex;gap:8px;justify-content:center;margin-top:8px}
+  .kb-row button{height:50px;flex:1;max-width:96px;border-radius:12px;background:var(--card);font-family:var(--sans);font-size:21px;box-shadow:0 1px 0 rgba(0,0,0,.14);transition:background .1s}
+  .kb-row button:active{background:#F1EADC}
+  .kb-row button.w{max-width:none;flex:1.5;background:#CBC1AC;font-size:16px}
+  .kb-row button.sp{max-width:none;flex:4}
+  .kb-row button.done{background:var(--ink);color:var(--card)}
+  .kb-row button.on{background:var(--ink);color:var(--card)}
+  .kb-row svg{width:22px;height:22px;vertical-align:middle}
+  .field input[readonly]{cursor:pointer}
+  .field input.focus{outline:2px solid var(--ink);outline-offset:1px}
+  /* ready state on the dispense screen */
+  .holdwrap{transition:opacity .4s,transform .4s var(--ease)}
+  .holdwrap.gone{opacity:0;transform:scale(.85)}
+  .dviz{flex:1;min-height:0;width:100%;display:flex;margin-top:22px;opacity:0;transition:opacity .5s}
+  .dviz[hidden]{display:none!important}
+  .dviz.in{opacity:1}
+  .dviz .viz{margin:0;background:rgba(252,249,238,.55)}
+  .dviz:not(.in) .viz i{opacity:0}
+  .dviz:not(.in) .viz i.a{transform:translateX(-200px)}.dviz:not(.in) .viz i.b{transform:translateX(200px)}
+  .dcont{margin-top:20px;display:flex;align-items:center;gap:14px;animation:rise .55s var(--ease) both}
+  /* auto smell sequence */
+  .holdwrap.auto .holdbtn{cursor:default}
+  .holdbtn .count{font-family:var(--serif);font-size:110px;font-weight:300;line-height:1;animation:tick .9s var(--ease) both}
+  @keyframes tick{from{opacity:0;transform:scale(1.25)}to{opacity:1;transform:none}}
+  .holdwrap.prep .bb .burst{animation:spin 14s linear infinite}
+  .holdwrap.breathe .bb{opacity:.5}
+  .holdwrap.breathe .bb .burst{animation:spin 6s linear infinite}
+  .ripple{position:absolute;left:37px;top:37px;width:206px;height:206px;border-radius:50%;border:2px solid var(--ink);opacity:0;pointer-events:none}
+  .holdwrap.breathe .ripple{animation:rip 2.4s ease-out infinite}
+  .holdwrap.breathe .ripple.r2{animation-delay:.8s}.holdwrap.breathe .ripple.r3{animation-delay:1.6s}
+  @keyframes rip{from{transform:scale(1);opacity:.55}to{transform:scale(1.9);opacity:0}}
+  .dsteps{margin-top:auto;padding-top:18px;display:flex;gap:30px;font-family:var(--sans);font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+  .dsteps span{display:flex;align-items:center;gap:8px;transition:color .3s}
+  .dsteps i{width:8px;height:8px;border-radius:50%;border:1.5px solid currentColor;transition:background .3s}
+  .dsteps .done i{background:currentColor}
+  .dsteps .on{color:var(--ink)}.dsteps .on i{background:var(--ink)}
+  .dsteps[hidden]{display:none!important}
+  .jump button.on{background:var(--ink);color:var(--card)}
+  .dcont[hidden]{display:none!important}
+
+  /* sheets: save & share, buy */
+  .sheet-wrap{position:absolute;inset:0;z-index:30}
+  .scrim{position:absolute;inset:0;background:rgba(41,41,41,.28);opacity:0;transition:opacity .35s}
+  .sheet{position:absolute;left:48px;right:48px;bottom:0;background:var(--card);border-radius:36px 36px 0 0;padding:32px 40px 40px;
+         transform:translateY(100%);transition:transform .5s var(--ease)}
+  .sheet-wrap.on .scrim{opacity:1}.sheet-wrap.on .sheet{transform:none}
+  .sheet .tbar{margin-bottom:20px}
+  .sheet h2{font-weight:300;font-size:var(--t-h2);line-height:1.05}
+  .sheet .cols{display:grid;grid-template-columns:220px 1fr;gap:40px;align-items:center;margin-top:20px}
+  .qr{width:220px;height:220px;background:var(--page);border-radius:20px;padding:14px}
+  .qr svg{width:100%;height:100%;display:block}
+  .field{display:flex;gap:10px;margin-top:14px}
+  .field input{flex:1;min-width:0;height:56px;border-radius:28px;border:1.5px solid rgba(41,41,41,.2);background:var(--page);padding:0 22px;font:inherit;font-family:var(--sans);font-size:17px;color:var(--ink)}
+  .field input:focus{outline:2px solid var(--ink);outline-offset:1px}
+  .note{font-family:var(--sans);font-size:14px;color:var(--ink-3);margin-top:12px;min-height:1.4em}
+  .items{margin-top:18px;display:flex;flex-direction:column;gap:12px}
+  .item{display:flex;align-items:center;gap:18px;padding:14px 16px;border-radius:22px;background:var(--page)}
+  .item .sw{width:56px;height:56px;border-radius:16px;flex:none}
+  .item h3{font-weight:300;font-size:24px;line-height:1.1}
+  .item small{font-family:var(--sans);font-size:14px;color:var(--ink-2)}
+  .item .pr{margin-left:auto;font-family:var(--sans);font-size:18px;font-variant-numeric:tabular-nums}
+  .sheet .row{display:flex;gap:12px;margin-top:20px}
+  .dark{background:var(--ink);color:var(--card)}
+
+  /* ---------- OUT OF SERVICE (replaces Attract while the device has an issue) ---------- */
+  #s-oos{padding:0;align-items:center;justify-content:center}
+  #s-oos .orb{animation:none;filter:grayscale(.85);opacity:.3}
+  #s-oos h1{font-size:64px}
+  #s-oos .sub{max-width:30ch;margin:0 auto;font-size:var(--t-body-l);line-height:1.35}
+  .staffbtn{position:absolute;right:26px;bottom:24px;z-index:3;font-family:var(--sans);font-size:14px;color:var(--ink-2);display:inline-flex;align-items:center;gap:8px;
+            height:44px;padding:0 16px;border-radius:22px;background:rgba(252,249,238,.5)}
+  .staffbtn svg{width:16px;height:16px}
+
+  /* ---------- STAFF PIN ---------- */
+  #s-pin{align-items:center}
+  #s-pin .top{width:100%}
+  .pinbox{margin:auto 0;display:flex;flex-direction:column;align-items:center}
+  .pinbox .ic{width:64px;height:64px;border-radius:50%;background:var(--ink);color:var(--card);display:grid;place-items:center}
+  .pinbox .ic svg{width:26px;height:26px}
+  .pinbox h2{font-weight:300;font-size:var(--t-h2);line-height:1.1;margin-top:18px}
+  .pdots{display:flex;gap:18px;margin:22px 0 28px}
+  .pdots i{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--ink);transition:background .15s}
+  .pdots i.on{background:var(--ink)}
+  .pkeys{display:grid;grid-template-columns:repeat(3,96px);gap:14px}
+  .pkeys button{height:72px;border-radius:36px;background:var(--card);font-family:var(--sans);font-size:26px;box-shadow:0 1px 0 rgba(0,0,0,.08);transition:background .1s}
+  .pkeys button:active{background:#F1EADC}
+  .pkeys .ghost{background:none;box-shadow:none}
+  .pkeys svg{width:24px;height:24px;vertical-align:middle}
+  .pinbox .note{text-align:center;margin-top:18px}
+
+  /* ---------- STAFF STATUS ---------- */
+  .stf{flex:1;min-height:0;display:grid;grid-template-columns:400px 1fr;gap:24px;margin-top:20px}
+  .stf-l{display:flex;flex-direction:column;gap:14px;min-height:0}
+  .stf-status{border-radius:28px;padding:22px 24px;background:var(--ink);color:var(--card)}
+  .stf-status .kick{color:rgba(252,249,238,.7)}
+  .stf-status h2{font-weight:300;font-size:var(--t-h3);line-height:1.1;margin-top:8px}
+  .stf-status p{font-family:var(--sans);font-size:14px;line-height:1.45;margin-top:6px;opacity:.8}
+  .stf-status.ok{background:var(--card);color:var(--ink)}
+  .stf-status.ok .kick{color:var(--ink-2)}
+  .stf-issue{background:var(--card);border-radius:24px;padding:18px 20px 20px;display:flex;flex-direction:column;gap:14px;box-shadow:0 18px 40px -26px rgba(60,45,25,.4)}
+  .stf-issue .code{font-family:var(--sans);font-size:12px;letter-spacing:.08em;color:var(--ink-3)}
+  .stf-issue h3{font-weight:300;font-size:26px;line-height:1.1;margin-top:4px}
+  .stf-issue p{font-family:var(--sans);font-size:14px;line-height:1.45;color:var(--ink-2);margin-top:6px}
+  .stf-issue .pill{align-self:flex-start;height:46px}
+  .stf-low{font-family:var(--sans);font-size:14px;line-height:1.45;color:var(--ink-2);padding:0 8px}
+  .stf-low b{font-weight:500;color:var(--ink)}
+  .stf-l .cta{margin-top:auto;justify-content:space-between;height:72px;padding-left:32px}
+  .stf-l .cta .dot{width:50px;height:50px}
+  .cta[disabled]{opacity:.28;cursor:default}
+  .stf-hint{font-family:var(--sans);font-size:13px;color:var(--ink-3);text-align:center;margin-top:-4px}
+  .stf-r{background:var(--card);border-radius:28px;padding:20px 26px;min-height:0;display:flex;flex-direction:column}
+  .stf-r .hd{display:flex;justify-content:space-between;align-items:baseline}
+  .stf-r h3{font-weight:300;font-size:26px}
+  .stf-r .hd span{font-family:var(--sans);font-size:13px;color:var(--ink-3)}
+  .cgrp{font-family:var(--sans);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin:14px 0 2px}
+  .crow{display:grid;grid-template-columns:12px 1fr 150px 44px 86px;align-items:center;gap:12px;height:34px;font-family:var(--sans);font-size:15px}
+  .crow b{width:12px;height:12px;border-radius:50%}
+  .cbar{height:6px;border-radius:3px;background:rgba(41,41,41,.1);overflow:hidden}
+  .cbar i{display:block;height:100%;background:var(--ink-2);border-radius:3px}
+  .cv{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+  .cchip{justify-self:end;font-size:12px;padding:4px 10px;border-radius:12px;background:var(--chip);color:var(--ink-2)}
+  .crow.low .cchip{background:none;border:1px solid var(--ink-2);color:var(--ink);padding:3px 9px}
+  .crow.empty .cchip{background:var(--ink);color:var(--card)}
+  .crow.empty .cn{font-weight:500}
+  .crow.empty b{background:none!important;border:1.5px dashed var(--ink-2)}
+  .stf-r.stale .cbar,.stf-r.stale .cv{opacity:.4}
+
+  /* on a dark scent colour */
+  .inv{color:var(--card); --ink-2:rgba(252,249,238,.82); --ink-3:rgba(252,249,238,.62); --chip:rgba(252,249,238,.16)}
+  .inv .burst{color:var(--card)}
+  .inv .burst .w{opacity:.28}
+  .inv .glass-tag{background:rgba(252,249,238,.18);color:var(--card)}
+  .inv .pill,.inv .select{color:var(--ink)}
+  .inv .pill.glass{background:rgba(252,249,238,.82)}
+  .inv .match{background:var(--card);color:var(--ink)}
+  .notes{position:fixed;left:0;right:0;bottom:8px;text-align:center;font-family:var(--sans);font-size:12px;color:var(--ink-3)}
+  @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important}}
+</style>
+</head>
+<body>
+
+<div class="jump">Jump to
+  <button data-jump="s-attract">Attract</button>
+  <button data-jump="s-land">Start</button>
+  <button data-jump="s-base">Create</button>
+  <button data-jump="s-sug">Suggestions</button>
+  <span class="sep"></span>Smell
+  <button data-smell="auto" class="on">Auto</button>
+  <button data-smell="hold">Hold</button>
+  <span class="sep"></span>Device
+  <button data-device="empty">Empty</button>
+  <button data-device="fault">Fault</button>
+</div>
+
+<div class="stage" id="stage"><div class="ipad"><div class="panel" id="panel">
+  <section class="view" id="s-attract"></section>
+  <section class="view hidden" id="s-land"></section>
+  <section class="view hidden" id="s-base"></section>
+  <section class="view hidden" id="s-comb"></section>
+  <section class="view hidden" id="s-sug"></section>
+  <section class="view hidden" id="s-oos"></section>
+  <section class="view hidden" id="s-pin"></section>
+  <section class="view hidden" id="s-staff"></section>
+</div></div></div>
+<p class="notes">Prototype · Wireframe fidelity · placeholder names, colours and artwork · returns to the attract screen after 2 minutes idle</p>
+
+<script>
+/* ================= data (placeholders) ================= */
+const BASES=[
+  {name:'English Pear & Freesia',tags:['Fresh','Fruity'],desc:'Ripe English pear wrapped in white freesia.',col:'#BCC096',word:'Luscious',match:0},
+  {name:'English Pear & Sweet Pea',tags:['Fruity','Floral'],desc:'Crisp English pear with the soft sweetness of sweet pea.',col:'#CDB9BE',word:'Sweet',match:0},
+  {name:'Wild Bluebell',tags:['Floral','Soft'],desc:'Dewy bluebells with a hint of persimmon, soft and green.',col:'#B2B9CD',word:'Dewy',match:0},
+  {name:'Pomegranate Noir',tags:['Spicy','Dark'],desc:'Ruby pomegranate with pink pepper and dark woods.',col:'#B7484E',word:'Jewelled',match:1},
+  {name:'Blackberry & Bay',tags:['Fruity','Green'],desc:'Tart blackberries and the green crunch of bay leaves.',col:'#657973',word:'Juicy',match:1},
+  {name:'Nectarine Blossom & Honey',tags:['Fruity','Sweet'],desc:'Sun-warmed nectarine with a drizzle of acacia honey.',col:'#E19278',word:'Honeyed',match:2},
+  {name:'Lime Basil & Mandarin',tags:['Citrus','Peppery'],desc:'Zesty lime and peppery basil with a mandarin twist.',col:'#CACFA5',word:'Peppery',match:2},
+  {name:'Wood Sage & Sea Salt',tags:['Invigorating','Effortless'],desc:'Mineral sea salt and earthy sage, like a windswept coastline.',col:'#BED0D5',word:'Breezy',match:2},
+  {name:'Silver Birch & Lavender',tags:['Woody','Aromatic'],desc:'Cool silver birch wood with soft, aromatic lavender.',col:'#B5AFBD',word:'Calming',match:1},
+  {name:'Poppy & Barley',tags:['Floral','Golden'],desc:'Red poppies swaying in golden fields of barley.',col:'#DEC094',word:'Sunkissed',match:0}];
+const COMBS=[
+  {name:'Peony & Blush Suede',line:'adds soft, velvety florals',tags:['Floral','Warm'],desc:'Lush peony petals over soft, velvety suede.',col:'#DFAFB4',word:'Floral',feel:'a soft, petal-fresh finish'},
+  {name:'English Oak & Hazelnut',line:'adds a warm, woody depth',tags:['Woody','Nutty'],desc:'Roasted hazelnut and green English oak, warm and earthy.',col:'#DDDA95',word:'Woody',feel:'a warm, woody depth'},
+  {name:'Grapefruit',line:'adds a twist of citrus',tags:['Citrus','Bright'],desc:'Sparkling pink grapefruit with a hint of rosemary.',col:'#F2C797',word:'Zesty',feel:'a bright, sparkling lift'}];
+const lineFor=p=>`A ${p.base.word.toLowerCase()}, ${p.comb.word.toLowerCase()} layering with ${p.comb.feel}.`;
+/* preset combinations: signature + combiner */
+const PAIRS=[[7,2],[1,0],[4,1],[6,2]].map(([b,c])=>({base:BASES[b],comb:COMBS[c]}));
+const CARD='#FCF9EE', BAND=128, BAR=150, DUR=700, FRICTION=3.6;
+
+/* ================= icons + art ================= */
+const svg=(d,sw=1.6)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const ICON={back:svg('<path d="M19 12H5M11 6l-6 6 6 6"/>'),restart:svg('<path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4"/>'),
+  right:svg('<path d="M5 12h14M13 6l6 6-6 6"/>',1.8),plus:svg('<path d="M12 5v14M5 12h14"/>',1.8),
+  longL:'<svg viewBox="0 0 56 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M54 20H2M16 6L2 20l14 14"/></svg>',
+  longR:'<svg viewBox="0 0 56 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h52M40 6l14 14-14 14"/></svg>',
+  tick:'<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  bag:svg('<path d="M5 8h14l-1.2 12H6.2z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/>'),
+  person:svg('<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/>'),
+  qrcode:svg('<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2.5v2.5H14zM17.5 17.5H20V20h-2.5zM14 20h1M20 14v1"/>'),
+  star:svg('<path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6-4.5-4.2 6.1-.7z"/>',1.8)};
+function burst(){let w='',p='';
+  for(let i=0;i<16;i++) w+=`<polygon points="97,68 103,68 111,6 89,6" transform="rotate(${i*22.5} 100 100)"/>`;
+  for(let i=0;i<6;i++) p+=`<ellipse cx="100" cy="83" rx="10" ry="15" transform="rotate(${i*60} 100 100)"/>`;
+  return `<svg class="burst" viewBox="0 0 200 200"><g class="w" fill="currentColor">${w}</g><g class="p" fill="none" stroke="currentColor" stroke-width="6">${p}</g><circle cx="100" cy="100" r="7" fill="currentColor" opacity=".5"/></svg>`;}
+/* text on a scent colour: the two darker signatures need highlight text to stay readable */
+const isDark=c=>{const v=[1,3,5].map(i=>parseInt(c.slice(i,i+2),16)/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4);
+  return .2126*v[0]+.7152*v[1]+.0722*v[2] < .3;};
+const tint=c=>c;   // swatches use the true scent colour
+const esc=s=>s.replace(/&/g,'&amp;');
+const tags=(t,g)=>t.map(x=>`<span class="tag ${g?'glass-tag':''}">${x}</span>`).join('');
+const MATCH_TAG=`<span class="match">${ICON.star}Best match for your signature</span>`;
+const LOGO=`<div class="logo"><b>JO MALONE</b><span>LONDON</span></div>`;
+const pillBtn=(act,label,glass)=>`<button class="pill ${glass?'glass':''}" data-act="${act}">${label==='Restart'?`Restart ${ICON.restart}`:`${ICON.back}${label}`}</button>`;
+function hdr(step,right){
+  const prog=step?`<div class="prog"><span class="kick">Step ${step} of 2 · ${step===1?'Signature':'Combiner'}</span><div class="bars"><i class="on"></i><i class="${step===2?'on':''}"></i></div></div>`:'<span></span>';
+  return `<div class="top">${prog}${LOGO}${right||'<span></span>'}</div>`;}
+
+/* ================= helpers ================= */
+const $=id=>document.getElementById(id);
+const panel=$('panel');
+const W=()=>panel.clientWidth, H=()=>panel.clientHeight;
+const K=()=>panel.getBoundingClientRect().width/panel.offsetWidth;
+function rectIn(el){const p=panel.getBoundingClientRect(),r=el.getBoundingClientRect(),s=K();
+  return {top:(r.top-p.top)/s,left:(r.left-p.left)/s,width:r.width/s,height:r.height/s};}
+function place(el,r,rad){Object.assign(el.style,{top:r.top+'px',left:r.left+'px',width:r.width+'px',height:r.height+'px',borderRadius:rad});}
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const frame=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+function layer(rect,rad,bg,cls=''){const el=document.createElement('div');el.className='layer '+cls;place(el,rect,rad);el.style.backgroundColor=bg;panel.append(el);return el;}
+let busy=false, current='s-attract';
+
+/* =========================================================
+   SHARED DRAG ENGINE (from the drag reference)
+   1:1 tracking, rubber-band edges, release velocity → friction; optional snap
+   ========================================================= */
+function Drag(el,o){
+  const s={x:0,y:0};let raf=null,down=false,dragging=false,sx,sy,ox,oy,samples=[],target;
+  const rub=(v,min,max)=>v>max?max+(v-max)*.3:v<min?min+(v-min)*.3:v;
+  const stop=()=>{cancelAnimationFrame(raf);raf=null};
+  el.addEventListener('pointerdown',e=>{if(busy||e.target.closest('[data-nodrag]')) return; stop(); down=true;dragging=false;target=e.target;
+    sx=e.clientX;sy=e.clientY;ox=s.x;oy=s.y;samples=[{t:performance.now(),x:sx,y:sy}];
+    el.setPointerCapture(e.pointerId); el.classList.add('held');});
+  el.addEventListener('pointermove',e=>{if(!down) return; const k=K(), dx=(e.clientX-sx)/k, dy=(e.clientY-sy)/k;
+    if(!dragging && Math.hypot(dx,dy)>10) dragging=true; if(!dragging) return;
+    const b=o.bounds(); s.x=rub(ox+dx,b.minX,b.maxX); if(o.axis==='xy') s.y=rub(oy+dy,b.minY,b.maxY);
+    const now=performance.now(); samples.push({t:now,x:e.clientX,y:e.clientY}); samples=samples.filter(p=>now-p.t<100); o.render(s);});
+  const end=()=>{if(!down) return; down=false; el.classList.remove('held');
+    if(!dragging){ o.onTap&&o.onTap(target); return; }
+    const a=samples[0], z=samples[samples.length-1], dt=Math.max(16,z.t-a.t), k=K();
+    let vx=(z.x-a.x)/dt*1000/k, vy=o.axis==='xy'?(z.y-a.y)/dt*1000/k:0; if(performance.now()-z.t>80){vx=0;vy=0}
+    if(o.snap) animateTo(o.snap(s.x,vx),s.y); else glide(vx,vy);};
+  el.addEventListener('pointerup',end); el.addEventListener('pointercancel',end);
+  function glide(vx,vy){let last=performance.now();
+    const step=now=>{const dt=Math.min(.05,(now-last)/1000);last=now;const b=o.bounds();
+      vx*=Math.exp(-FRICTION*dt); vy*=Math.exp(-FRICTION*dt); s.x+=vx*dt; s.y+=vy*dt;
+      if(s.x>b.maxX){s.x+=(b.maxX-s.x)*.16;vx*=.55} if(s.x<b.minX){s.x+=(b.minX-s.x)*.16;vx*=.55}
+      if(s.y>b.maxY){s.y+=(b.maxY-s.y)*.16;vy*=.55} if(s.y<b.minY){s.y+=(b.minY-s.y)*.16;vy*=.55}
+      o.render(s); const out=s.x>b.maxX+.5||s.x<b.minX-.5||s.y>b.maxY+.5||s.y<b.minY-.5;
+      if(Math.hypot(vx,vy)>6||out) raf=requestAnimationFrame(step);};
+    raf=requestAnimationFrame(step);}
+  function animateTo(tx,ty,dur){stop();const fx=s.x,fy=s.y,d=Math.hypot(tx-fx,ty-fy);
+    dur=dur||Math.min(950,420+d*.7);const t0=performance.now(),ease=t=>1-Math.pow(1-t,4);
+    const step=now=>{const t=Math.min(1,(now-t0)/dur),e=ease(t);s.x=fx+(tx-fx)*e;s.y=fy+(ty-fy)*e;o.render(s);if(t<1)raf=requestAnimationFrame(step);};
+    raf=requestAnimationFrame(step);}
+  return {s,animateTo,stop,set(x,y){s.x=x;s.y=y;o.render(s)}};}
+
+/* ================= build screens ================= */
+const ORBS=[['#BCC096',300,8,18,60,-40],['#DFAFB4',260,62,10,-70,50],['#F2C797',220,74,58,-50,-60],['#B2B9CD',340,20,62,80,-30],
+  ['#CACFA5',180,46,72,40,-70],['#BED0D5',200,86,28,-60,40],['#E19278',140,6,70,50,30]];
+$('s-attract').innerHTML=ORBS.map(([c,s,x,y,dx,dy],i)=>`<i class="orb" style="width:${s}px;height:${s}px;left:${x}%;top:${y}%;margin:${-s/2}px 0 0 ${-s/2}px;
+  background:radial-gradient(circle at 35% 30%, color-mix(in srgb, ${c} 45%, ${CARD}), ${c});--dx:${dx}px;--dy:${dy}px;--s:${1+(i%3)*.06};--t:${7+i*1.3}s"></i>`).join('')+
+  `<div class="attract-copy">${LOGO}<h1>Discover your perfect pairing</h1><span class="touch">Touch to begin</span></div>`;
+
+$('s-land').innerHTML=hdr(0)+`<div class="head"><h1>Choose how to begin</h1><p class="sub">Layer two colognes to create a scent that's yours.</p></div>
+  <div class="opts">
+    <button class="opt enter" style="--d:0" data-act="toBase"><div class="img"><div class="h t" style="background:${tint(COMBS[2].col)}"></div><div class="h b" style="background:${tint(BASES[0].col)}"></div>${burst()}</div>
+      <div class="body"><div><h3>Create your own pairing</h3><p>Choose a signature scent, then a combiner to layer over it.</p></div><span class="go">${ICON.right}</span></div></button>
+    <button class="opt enter" style="--d:1" data-act="toSug"><div class="img"><div class="mosaic">${PAIRS.map(p=>`<i style="background:linear-gradient(90deg, ${tint(p.base.col)} 50%, ${tint(p.comb.col)} 50%)"></i>`).join('')}</div></div>
+      <div class="body"><div><h3>Explore our pairings</h3><p>Browse combinations chosen by our fragrance team.</p></div><span class="go">${ICON.right}</span></div></button>
+  </div>`;
+
+$('s-base').innerHTML=hdr(1,pillBtn('toLand','Back'))+`<h1>Choose your signature scent</h1><p class="sub">Swipe to explore</p>
+  <div class="car dragzone" id="car"><div class="held-scale"><div class="track" id="track">${
+    BASES.map((s,i)=>`<div class="bcard" data-i="${i}"><div class="img ${isDark(s.col)?'inv':''}" style="background:${tint(s.col)}">${burst()}</div>
+      <h3>${esc(s.name)}</h3><div class="tags">${tags(s.tags)}</div><span class="plus">${ICON.plus}</span></div>`).join('')}</div></div></div>
+  <div class="ctrl"><button class="larrow" id="bprev" aria-label="Previous scent">${ICON.longL}</button>
+    <div class="dots" id="bdots">${BASES.map((s,i)=>`<button data-i="${i}" aria-label="${esc(s.name)}"><i></i></button>`).join('')}</div>
+    <button class="larrow" id="bnext" aria-label="Next scent">${ICON.longR}</button></div>`;
+
+$('s-comb').innerHTML=hdr(2,pillBtn('changeBase','Back'))+`<h1>Choose your combiner</h1>
+  <div class="stack" id="stack"><div id="scards"></div>
+    <button class="larrow sarrow l" id="sprev" aria-label="Previous combiner">${ICON.longL}</button>
+    <button class="larrow sarrow r" id="snext" aria-label="Next combiner">${ICON.longR}</button></div>
+  <div class="dots" id="sdots">${COMBS.map((c,i)=>`<button data-i="${i}" aria-label="${esc(c.name)}"><i></i></button>`).join('')}</div>`;
+
+$('s-sug').innerHTML=hdr(0,pillBtn('toLand','Back'))+`<h1>Our suggested pairings</h1><p class="sub">Four favourites from our fragrance team. Tap one to explore it.</p>
+  <div class="sug" id="sug"></div>
+  <div class="scar-wrap" id="scarWrap" hidden>
+    <div class="pcar dragzone" id="pcar"><div class="held-scale"><div class="track">${PAIRS.map((p,i)=>`<div class="pslide" data-i="${i}">
+      <div class="sw2"><div class="h l" style="background:${tint(p.base.col)}"></div><div class="h r" style="background:${tint(p.comb.col)}"></div>${burst()}</div>
+      <div class="txt"><span class="kick">Pairing ${i+1} of ${PAIRS.length}</span><h3>${esc(p.base.name)}</h3><p class="who">+ ${esc(p.comb.name)}</p>
+        <p class="feel">${p.base.word} · ${p.comb.word}</p><span class="open">Explore this pairing <i>${ICON.right}</i></span></div></div>`).join('')}</div></div></div>
+    <div class="ctrl"><button class="larrow" id="pprev" aria-label="Previous pairing">${ICON.longL}</button>
+      <div><div class="dots" id="pdots">${PAIRS.map((p,i)=>`<button data-i="${i}" aria-label="${esc(p.base.name)} and ${esc(p.comb.name)}"><i></i></button>`).join('')}</div><p class="count" id="pcount"></p></div>
+      <button class="larrow" id="pnext" aria-label="Next pairing">${ICON.longR}</button></div>
+  </div>
+  <div class="make"><div><h3>Prefer to make your own?</h3><p>Choose a signature scent, then layer a combiner over it.</p></div>
+    <button class="cta" data-act="toBase">Create your own pairing <span class="dot">${ICON.right}</span></button></div>`;
+
+/* ================= navigation ================= */
+function go(id,intro=true){if(id==='s-attract'&&device.kind) id='s-oos'; current=id;
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('hidden',v.id!==id));
+  if(id==='s-land') document.querySelectorAll('#s-land .enter').forEach(c=>{c.classList.remove('enter');void c.offsetWidth;c.classList.add('enter')});
+  if(intro&&id==='s-base') introCar();
+  if(intro&&id==='s-comb') introStack();
+  if(intro&&id==='s-sug') renderSug();
+  if(id==='s-pin') pinReset();
+  if(id==='s-staff') renderStaff();
+  document.querySelectorAll('[data-device]').forEach(b=>b.classList.toggle('on',b.dataset.device===device.kind));
+  resetIdle();}
+
+/* =========================================================
+   STEP 1 · SIGNATURE CAROUSEL — 10 scents, drag + snap
+   ========================================================= */
+const N=BASES.length, STEP=298, STEP2=270, SIDE=.82;
+const car=$('car'), bcards=[...$('track').children], bdots=[...$('bdots').children];
+let centre=-1;
+const idxOf=x=>Math.max(0,Math.min(N-1,Math.round(-x/STEP)));
+function renderCar(s){
+  bcards.forEach((el,i)=>{const d=i+s.x/STEP, a=Math.abs(d), sg=Math.sign(d);
+    const x=sg*(Math.min(a,1)*STEP+Math.max(a-1,0)*STEP2);           // centre card large, neighbours tuck in close
+    el.style.transform=`translateX(${x}px) scale(${1-(1-SIDE)*Math.min(a,1)})`;
+    el.style.zIndex=String(100-Math.round(a*10)); el.style.opacity=a>3.2?0:1;
+    el.classList.toggle('centre',a<.3);});
+  const c=idxOf(s.x);
+  if(c!==centre){centre=c; bdots.forEach((d,i)=>d.classList.toggle('on',i===c)); $('bprev').disabled=c===0; $('bnext').disabled=c===N-1;}}
+const carDrag=Drag(car,{axis:'x',render:renderCar,
+  bounds:()=>({minX:-(N-1)*STEP,maxX:0,minY:0,maxY:0}),
+  snap:(x,vx)=>{const proj=x+vx/FRICTION, cur=idxOf(x); let i=Math.round(-proj/STEP);
+    i=Math.max(cur-3,Math.min(cur+3,i)); return -Math.max(0,Math.min(N-1,i))*STEP;},
+  onTap:t=>{const card=t.closest('.bcard'); if(!card) return; const i=+card.dataset.i;
+    if(i!==centre) carDrag.animateTo(-i*STEP,0); else openBase(card);}});
+$('bprev').onclick=()=>{if(!busy) carDrag.animateTo(-Math.max(0,centre-1)*STEP,0)};
+$('bnext').onclick=()=>{if(!busy) carDrag.animateTo(-Math.min(N-1,centre+1)*STEP,0)};
+$('bdots').onclick=e=>{const b=e.target.closest('button'); if(b&&!busy) carDrag.animateTo(-(+b.dataset.i)*STEP,0);};
+function introCar(){carDrag.set(STEP*2.2,0); carDrag.animateTo(0,0,1200);}
+
+/* signature detail takeover */
+let base=null, comb=null, baseLayer=null, combLayer=null, baseCard=null, combCard=null, ov=null, curPair=null, L=null, pairSrc=null, D=null, smellSrc=null;
+function baseDetail(s){return `<div class="lc det">
+  <div class="tbar"><span class="kick">Step 1 of 2 · Signature</span><span></span>${pillBtn('closeBase','Back',1)}</div>
+  <div class="tmain"><h2>${esc(s.name)}</h2><div class="tags">${tags(s.tags,true)}</div></div>
+  <div class="tfoot"><p class="desc">${s.desc}</p><button class="select" data-act="selectBase">Select this scent <span class="dot">${ICON.tick}</span></button></div>
+  <div class="big">${burst()}</div></div>`;}
+const bandHTML=s=>`<div class="lc band"><div class="id"><div class="mini">${burst()}</div><div><span class="lbl">Your signature</span><h3>${esc(s.name)}</h3></div></div>
+  <button class="pill glass" data-act="changeBase">${ICON.restart}Change scent</button></div>`;
+async function openBase(card){busy=true;baseCard=card;base=BASES[+card.dataset.i];
+  baseLayer=layer(rectIn(card),'30px',CARD); card.style.visibility='hidden'; await frame();
+  place(baseLayer,{top:0,left:0,width:W(),height:H()},'40px');
+  baseLayer.style.backgroundColor=base.col; baseLayer.classList.toggle('inv',isDark(base.col)); await wait(DUR);
+  baseLayer.innerHTML=baseDetail(base); await frame(); baseLayer.classList.add('show'); busy=false;}
+async function closeBase(){busy=true;baseLayer.classList.remove('show');await wait(250);baseLayer.innerHTML='';
+  place(baseLayer,rectIn(baseCard),'30px');baseLayer.style.backgroundColor=CARD;await wait(DUR);
+  baseCard.style.visibility='';baseLayer.remove();baseLayer=null;busy=false;}
+/* signature selected → becomes the band at the bottom; the combiner stack rises above */
+async function selectBase(){busy=true;baseLayer.classList.remove('show');await wait(250);baseLayer.innerHTML='';
+  baseCard.style.visibility=''; buildStack(); go('s-comb');
+  place(baseLayer,{top:H()-BAND,left:0,width:W(),height:BAND},'0 0 40px 40px'); await wait(DUR);
+  baseLayer.innerHTML=bandHTML(base); await frame(); baseLayer.classList.add('show'); busy=false;}
+/* change scent from the combiner detail: the combiner choice is cleared and the flow goes straight
+   back to the step 1 carousel. Only 3 combiners to re-pick, so nothing is carried over. */
+async function changeBaseFromComb(){busy=true;
+  combLayer.style.transition='opacity .25s'; combLayer.style.opacity=0;          // combiner clears first
+  [combLayer,baseLayer].forEach(l=>l.classList.remove('show')); await wait(260); combLayer.innerHTML=''; baseLayer.innerHTML='';
+  baseCard.style.visibility='hidden'; go('s-base',false);
+  place(baseLayer,rectIn(baseCard),'30px'); baseLayer.style.backgroundColor=CARD; await wait(DUR);
+  combCard.style.visibility=''; combLayer.remove(); combLayer=null; comb=null;
+  baseCard.style.visibility=''; baseLayer.remove(); baseLayer=null; base=null; busy=false;}
+/* change scent → band shrinks back into its card in the carousel */
+async function changeBase(){busy=true;baseLayer.classList.remove('show');await wait(250);baseLayer.innerHTML='';
+  baseCard.style.visibility='hidden'; go('s-base',false);
+  place(baseLayer,rectIn(baseCard),'30px'); baseLayer.style.backgroundColor=CARD; await wait(DUR);
+  baseCard.style.visibility=''; baseLayer.remove(); baseLayer=null; base=null; busy=false;}
+
+/* =========================================================
+   STEP 2 · COMBINER STACK — 3 cards stacked; swipe the top card away and it tucks to the back
+   ========================================================= */
+const stack=$('stack'), scWrap=$('scards'), sdots=[...$('sdots').children];
+let scards=[], order=[0,1,2], sLock=false;
+const SLOT=[{y:0,r:0,s:1},{y:-24,r:-3.5,s:.94},{y:-46,r:3,s:.88}];
+const tf=(p,x=0,r=0)=>`translate(-50%,-50%) translateX(${x}px) translateY(${p.y}px) rotate(${p.r+r}deg) scale(${p.s})`;
+const lerpSlot=(a,b,t)=>({y:a.y+(b.y-a.y)*t,r:a.r+(b.r-a.r)*t,s:a.s+(b.s-a.s)*t});
+function buildStack(){const m=base?base.match:0;
+  scWrap.innerHTML=COMBS.map((c,i)=>`<div class="scard" data-i="${i}">
+    <div class="img" style="background:${tint(c.col)}">${base&&i===m?MATCH_TAG:''}${burst()}</div>
+    <h3>${esc(c.name)}</h3><p class="line">${c.line}</p><div class="tags">${tags(c.tags)}</div><span class="plus">${ICON.plus}</span></div>`).join('');
+  scards=[...scWrap.children]; order=[m,(m+1)%3,(m+2)%3]; renderStack(false);}
+function renderStack(anim=true){
+  order.forEach((i,k)=>{const el=scards[i];
+    el.style.transition=anim?'transform .55s var(--ease-out)':'none';
+    el.style.transform=tf(SLOT[k]); el.style.zIndex=String(10-k); el.classList.toggle('front',k===0);});
+  sdots.forEach((d,i)=>d.classList.toggle('on',i===order[0]));}
+function introStack(){if(!scards.length) buildStack();
+  order.forEach((i,k)=>{const el=scards[i]; el.style.transition='none'; el.style.transform=tf(SLOT[k],0,0)+` translateY(${160+k*40}px)`; el.style.opacity=0;});
+  void scWrap.offsetWidth;
+  order.forEach((i,k)=>{const el=scards[i]; setTimeout(()=>{el.style.transition='transform .8s var(--ease-out), opacity .5s'; el.style.opacity=1; el.style.transform=tf(SLOT[k]);},120+(2-k)*110);});
+  sdots.forEach((d,i)=>d.classList.toggle('on',i===order[0]));}
+async function flyOut(dir){if(sLock) return; sLock=true; const el=scards[order[0]];
+  el.style.transition='transform .3s cubic-bezier(.5,0,.9,.5)'; el.style.transform=tf(SLOT[0],dir*620,dir*16);
+  order.slice(1).forEach((i,k)=>{const c=scards[i]; c.style.transition='transform .45s var(--ease-out)'; c.style.transform=tf(SLOT[k]); c.style.zIndex=String(10-k);});
+  await wait(300); order.push(order.shift()); el.style.zIndex='7';
+  renderStack(); sdots.forEach((d,i)=>d.classList.toggle('on',i===order[0])); await wait(300); sLock=false;}
+async function bringBack(){if(sLock) return; sLock=true; const i=order[order.length-1], el=scards[i];
+  el.style.transition='none'; el.style.zIndex='20'; el.style.transform=tf(SLOT[0],620,16); void el.offsetWidth;
+  order.unshift(order.pop()); renderStack(); await wait(500); sLock=false;}
+(()=>{let down=false,dragging=false,sx=0,dx=0,samples=[],target=null,front=null;
+  stack.addEventListener('pointerdown',e=>{if(busy||sLock||e.target.closest('.sarrow')) return;
+    down=true;dragging=false;dx=0;target=e.target;sx=e.clientX;front=scards[order[0]];samples=[{t:performance.now(),x:sx}];
+    stack.setPointerCapture(e.pointerId);});
+  stack.addEventListener('pointermove',e=>{if(!down) return; dx=(e.clientX-sx)/K();
+    if(!dragging&&Math.abs(dx)>10) dragging=true; if(!dragging) return;
+    front.style.transition='none'; front.style.transform=tf(SLOT[0],dx,dx*.05);
+    const t=Math.min(1,Math.abs(dx)/240);                         // cards behind rise as the top card leaves
+    order.slice(1).forEach((i,k)=>{const c=scards[i]; c.style.transition='none'; c.style.transform=tf(lerpSlot(SLOT[k+1],SLOT[k],t));});
+    const now=performance.now(); samples.push({t:now,x:e.clientX}); samples=samples.filter(s=>now-s.t<100);});
+  const end=()=>{if(!down) return; down=false;
+    if(!dragging){const card=target&&target.closest('.scard'); if(!card) return; const i=+card.dataset.i;
+      if(i===order[0]) openComb(card,i); else{ while(order[0]!==i) order.push(order.shift()); renderStack(); } return;}
+    const a=samples[0],z=samples[samples.length-1]; let v=(z.x-a.x)/Math.max(16,z.t-a.t)*1000/K(); if(performance.now()-z.t>80) v=0;
+    if(Math.abs(dx)>110||Math.abs(v)>650) flyOut(Math.sign(dx||v)); else renderStack();};
+  stack.addEventListener('pointerup',end); stack.addEventListener('pointercancel',end);})();
+$('snext').onclick=()=>{if(!busy) flyOut(-1)};
+$('sprev').onclick=()=>{if(!busy) bringBack()};
+$('sdots').onclick=e=>{const b=e.target.closest('button'); if(!b||busy||sLock) return; const i=+b.dataset.i; if(i===order[0]) return;
+  while(order[0]!==i) order.push(order.shift()); renderStack();};
+
+/* combiner card → fills the space above the signature band */
+async function openComb(card,i){busy=true; combCard=card; comb=COMBS[i];
+  combLayer=layer(rectIn(card),'30px',CARD,'c'); card.style.visibility='hidden'; await frame();
+  place(combLayer,{top:0,left:0,width:W(),height:H()-BAND},'40px 40px 0 0'); combLayer.style.backgroundColor=comb.col; await wait(DUR);
+  combLayer.innerHTML=`<div class="lc det">
+    <div class="tbar"><span class="kick">Step 2 of 2 · Combiner</span><span></span>${pillBtn('closeComb','Back',1)}</div>
+    <div class="tmain"><h2>${esc(comb.name)}</h2><div class="tags">${tags(comb.tags,true)}</div>${base&&i===base.match?MATCH_TAG:''}</div>
+    <div class="tfoot"><p class="desc">${comb.desc}</p><button class="select" data-act="selectComb">Select this combiner <span class="dot">${ICON.tick}</span></button></div>
+    <div class="big">${burst()}</div></div>`;
+  await frame(); combLayer.classList.add('show'); busy=false;}
+async function closeComb(){busy=true;combLayer.classList.remove('show');await wait(250);combLayer.innerHTML='';
+  place(combLayer,rectIn(combCard),'30px');combLayer.style.backgroundColor=CARD;await wait(DUR);
+  combCard.style.visibility='';combLayer.remove();combLayer=null;busy=false;}
+
+/* ================= pairing ================= */
+function pairHTML(kicker,p,btn){
+  return `<div class="lc pair">
+    <div class="tbar"><span class="kick ${isDark(p.base.col)?'inv':''}">${kicker}</span><span></span>${btn}</div>
+    <div class="p-col l ${isDark(p.base.col)?'inv':''}"><div class="hb">${burst()}</div><span class="lbl">Signature</span><h3>${esc(p.base.name)}</h3><div class="word">${p.base.word}</div></div>
+    <div class="p-col r ${isDark(p.comb.col)?'inv':''}"><div class="hb">${burst()}</div><span class="lbl">Combiner</span><h3>${esc(p.comb.name)}</h3><div class="word">${p.comb.word}</div></div>
+    <div class="plusmark">+</div>
+    <div class="p-bar"><div><span class="lbl">${kicker==='Suggested pairing'?'Suggested pairing':'Your layering'}</span><p class="line">${lineFor(p)}</p></div>
+      <button class="cta" data-act="smell">Smell <span class="dot">${ICON.right}</span></button></div></div>`;}
+async function selectComb(){busy=true; curPair={base,comb};
+  [combLayer,baseLayer].forEach(l=>l.classList.remove('show')); await wait(250); combLayer.innerHTML=''; baseLayer.innerHTML='';
+  const w=W()/2, h=H()-BAR;
+  place(combLayer,{top:0,left:w,width:W()-w,height:h},'0 40px 0 0'); place(baseLayer,{top:0,left:0,width:w,height:h},'40px 0 0 0');
+  await wait(DUR);
+  panel.insertAdjacentHTML('beforeend',pairHTML('Your pairing',curPair,pillBtn('pairBack','Back',1)));
+  ov=panel.lastElementChild; ov.style.zIndex=12; await frame(); ov.classList.add('show'); busy=false;}
+async function pairBack(){busy=true; ov.classList.remove('show'); await wait(300); ov.remove(); ov=null;
+  place(combLayer,rectIn(combCard),'30px'); combLayer.style.backgroundColor=CARD;
+  place(baseLayer,{top:H()-BAND,left:0,width:W(),height:BAND},'0 0 40px 40px'); await wait(DUR);
+  combCard.style.visibility=''; combLayer.remove(); combLayer=null;
+  baseLayer.innerHTML=bandHTML(base); await frame(); baseLayer.classList.add('show'); busy=false;}
+
+/* ================= explore our pairings: 3 layout options ================= */
+let sugLayout='car';
+function sugItem(p,i){
+  const feat=sugLayout==='feat'&&i===0;
+  return `<button class="sitem enter" style="--d:${i}" data-pair="${i}">
+    <div class="sw2"><div class="h l" style="background:${tint(p.base.col)}"></div><div class="h r" style="background:${tint(p.comb.col)}"></div>${burst()}${feat?'<span class="flag">Most loved</span>':''}</div>
+    <div class="txt"><div><h3>${esc(p.base.name)}</h3><p class="who">+ ${esc(p.comb.name)}</p></div>${sugLayout==='bands'?`<p class="feel">${p.base.word} · ${p.comb.word}</p>`:''}</div>
+    <span class="go">${ICON.right}</span></button>`;}
+/* pairings carousel: same drag engine and snap as the signature carousel */
+const PN=PAIRS.length, PSTEP=540, PSTEP2=494, PSIDE=.84;
+const pslides=[...document.querySelectorAll('.pslide')], pdots=[...$('pdots').children];
+let pcentre=-1;
+const pIdx=x=>Math.max(0,Math.min(PN-1,Math.round(-x/PSTEP)));
+function renderPcar(s){
+  pslides.forEach((el,i)=>{const d=i+s.x/PSTEP, a=Math.abs(d), sg=Math.sign(d);
+    el.style.transform=`translateX(${sg*(Math.min(a,1)*PSTEP+Math.max(a-1,0)*PSTEP2)}px) scale(${1-(1-PSIDE)*Math.min(a,1)})`;
+    el.style.zIndex=String(100-Math.round(a*10)); el.style.opacity=a>2.2?0:1; el.classList.toggle('centre',a<.3);});
+  const c=pIdx(s.x);
+  if(c!==pcentre){pcentre=c; pdots.forEach((d,i)=>d.classList.toggle('on',i===c)); $('pcount').textContent=`${c+1} / ${PN}`;
+    $('pprev').disabled=c===0; $('pnext').disabled=c===PN-1;}}
+const pDrag=Drag($('pcar'),{axis:'x',render:renderPcar,
+  bounds:()=>({minX:-(PN-1)*PSTEP,maxX:0,minY:0,maxY:0}),
+  snap:(x,vx)=>{const cur=pIdx(x); let i=Math.round(-(x+vx/FRICTION)/PSTEP); i=Math.max(cur-1,Math.min(cur+1,i)); return -Math.max(0,Math.min(PN-1,i))*PSTEP;},
+  onTap:t=>{const card=t.closest('.pslide'); if(!card) return; const i=+card.dataset.i;
+    if(i!==pcentre) pDrag.animateTo(-i*PSTEP,0); else openPair(card,PAIRS[i]);}});
+$('pprev').onclick=()=>{if(!busy) pDrag.animateTo(-Math.max(0,pcentre-1)*PSTEP,0)};
+$('pnext').onclick=()=>{if(!busy) pDrag.animateTo(-Math.min(PN-1,pcentre+1)*PSTEP,0)};
+$('pdots').onclick=e=>{const b=e.target.closest('button'); if(b&&!busy) pDrag.animateTo(-(+b.dataset.i)*PSTEP,0);};
+function introPcar(){pDrag.set(PSTEP*1.6,0); pDrag.animateTo(0,0,1100);}
+function renderSug(){const car=sugLayout==='car';
+  $('sug').hidden=car; $('scarWrap').hidden=!car;
+  $('sug').innerHTML=car?'':`<div class="lay-${sugLayout}">${PAIRS.map(sugItem).join('')}</div>`;
+  if(car) introPcar();
+  document.querySelectorAll('[data-lay]').forEach(b=>b.classList.toggle('on',b.dataset.lay===sugLayout));}
+renderSug();
+async function openPair(card,p){busy=true;pairSrc=card;curPair=p;
+  L=layer(rectIn(card),'28px',CARD);
+  L.innerHTML=`<div class="half l" style="background:${p.base.col}"></div><div class="half r" style="background:${p.comb.col}"></div>`;
+  card.style.visibility='hidden'; await frame();
+  place(L,{top:0,left:0,width:W(),height:H()},'40px'); L.classList.add('open'); await wait(DUR);
+  L.insertAdjacentHTML('beforeend',pairHTML('Suggested pairing',p,pillBtn('closePair','Back',1)));
+  await frame(); L.classList.add('show'); busy=false;}
+async function closePair(){busy=true; L.classList.remove('show'); await wait(250);
+  L.querySelectorAll('.lc').forEach(n=>n.remove()); L.classList.remove('open');
+  place(L,rectIn(pairSrc),'28px'); L.style.backgroundColor=CARD; await wait(DUR);
+  pairSrc.style.visibility=''; L.remove(); L=null; busy=false;}
+
+/* ================= dispense ================= */
+const HOLD_MS=2600, RC=2*Math.PI*136;
+/* Smell: "auto" runs the device sequence for the customer (Option B); "hold" keeps hold-to-release for comparison.
+   Timings are placeholders until the hardware is confirmed. */
+let smellMode='auto', seqId=0;
+const PREP_MS=3500, COUNT_FROM=3, DISPENSE_MS=3000, BEAT_MS=5000;
+const STEPS=['Preparing','Get ready','Breathe in','Take a moment'];
+function dspHTML(p){return `<div class="lc dsp">
+    <div class="tbar" id="dtbar"><span class="kick ${isDark(p.base.col)?'inv':''}">Your pairing</span><span></span>${pillBtn('dclose','Back',1)}</div>
+    <h2 id="dh"></h2><p class="dsub" id="ds"></p>
+    <div class="holdwrap ${smellMode==='auto'?'auto':''}" id="hw">
+      <i class="ripple"></i><i class="ripple r2"></i><i class="ripple r3"></i>
+      <svg class="ring" viewBox="0 0 280 280"><circle class="trk" cx="140" cy="140" r="136"/><circle class="prg" id="prg" cx="140" cy="140" r="136" stroke-dasharray="${RC}" stroke-dashoffset="${RC}"/></svg>
+      <div class="holdbtn"><div class="bb">${burst()}</div><span id="hbl">Hold</span></div></div>
+    <div class="dviz" id="dviz" hidden>${vizHTML(p)}</div>
+    <div class="dcont" id="dcont" hidden><button class="pill glass" data-act="again">Smell again</button>
+      <button class="cta" data-act="toEnd">Continue <span class="dot">${ICON.right}</span></button></div>
+    <div class="dsteps" id="dsteps" ${smellMode==='auto'?'':'hidden'}>${STEPS.map(t=>`<span><i></i>${t}</span>`).join('')}</div>
+  </div>`;}
+async function openDispense(btn){busy=true;smellSrc=btn;const p=curPair;
+  D=layer(rectIn(btn),'40px','#292929','disp');
+  D.innerHTML=`<div class="blend" style="background:linear-gradient(100deg, ${p.base.col} 0%, color-mix(in srgb, ${p.base.col} 50%, ${p.comb.col}) 50%, ${p.comb.col} 100%)"></div>`;
+  btn.style.visibility='hidden'; await frame();
+  place(D,{top:0,left:0,width:W(),height:H()},'40px'); D.style.backgroundColor=CARD; D.classList.add('open'); await wait(DUR);
+  D.insertAdjacentHTML('beforeend',dspHTML(p));
+  await frame(); D.classList.add('show'); busy=false; startSmell();}
+function startSmell(){ smellMode==='auto'?runAuto():wireHold(); }
+/* smell again: rebuild the stage and run it from the top (the device may need to prepare again) */
+async function smellAgain(){const old=D.querySelector('.dsp'); old.style.opacity=0; await wait(250); old.remove();
+  D.insertAdjacentHTML('beforeend',dspHTML(curPair)); const n=D.querySelector('.dsp'); n.style.opacity=0; await frame(); n.style.opacity=''; startSmell();}
+
+function ringTo(ms,g){const prg=$('prg'); const t0=performance.now();
+  return new Promise(res=>{const step=now=>{if(g!==seqId) return res(false); const k=Math.min(1,(now-t0)/ms);
+    prg.setAttribute('stroke-dashoffset',RC*(1-k)); if(k<1) requestAnimationFrame(step); else res(true);}; requestAnimationFrame(step);});}
+async function runAuto(){const g=++seqId, live=()=>g===seqId&&D;
+  const hw=$('hw'), hbl=$('hbl'), tb=$('dtbar'), steps=[...$('dsteps').children], prg=$('prg');
+  const text=(h,sub)=>{$('dh').textContent=h;$('ds').textContent=sub;};
+  const step=i=>steps.forEach((el,k)=>{el.classList.toggle('on',k===i);el.classList.toggle('done',k<i);});
+  // 1 · preparing — the device primes; Back still cancels
+  step(0); hw.classList.add('prep'); hbl.textContent='Preparing';
+  text('Preparing your pairing','This only takes a few seconds.');
+  if(!await ringTo(PREP_MS,g)) return; hw.classList.remove('prep');
+  // 2 · get ready — tell them where to be before it fires; Back is locked from here
+  step(1); tb.classList.add('locked'); prg.setAttribute('stroke-dashoffset',RC);
+  text('Lean in towards the diffuser','Your scent will be released in a moment.');
+  for(let n=COUNT_FROM;n>0;n--){hbl.innerHTML=`<span class="count">${n}</span>`; await wait(1000); if(!live()) return;}
+  // 3 · breathe in — dispensing
+  step(2); hw.classList.add('breathe'); hbl.textContent='Breathe in'; text('Breathe in','');
+  if(!await ringTo(DISPENSE_MS,g)) return; hw.classList.remove('breathe');
+  // 4 · take a moment — the visual blooms and the description lands; Continue waits for the beat
+  step(3); hw.classList.add('gone'); await wait(400); if(!live()) return; hw.style.display='none';
+  const dv=$('dviz'); dv.hidden=false; await frame(); dv.classList.add('in');
+  text('Take a moment with your scent',lineFor(curPair)); tb.lastElementChild.style.visibility='hidden'; tb.classList.remove('locked');
+  await wait(BEAT_MS); if(!live()) return;
+  $('dcont').hidden=false;}
+
+let hold=null;
+function wireHold(){
+  const hw=$('hw'), prg=$('prg'), tb=$('dtbar'), dh=$('dh'), ds=$('ds'), hbl=$('hbl');
+  const st={p:0,holding:false,done:false,raf:null,last:0};
+  const text=(h,s)=>{dh.textContent=h;ds.textContent=s;};
+  const idle=()=>text('Press and hold to release your scent','Keep holding until the ring is complete.'); idle();
+  const draw=()=>prg.setAttribute('stroke-dashoffset',RC*(1-st.p));
+  const loop=now=>{const dt=now-st.last;st.last=now;
+    st.p+= st.holding? dt/HOLD_MS : -dt/700; st.p=Math.max(0,Math.min(1,st.p)); draw();
+    if(st.p>=1&&!st.done) return complete();
+    if(st.holding||st.p>0) st.raf=requestAnimationFrame(loop); else tb.classList.remove('locked');};
+  const start=e=>{if(st.done||busy) return; hw.setPointerCapture(e.pointerId); st.holding=true; hw.classList.add('holding');
+    tb.classList.add('locked'); text('Releasing your scent…','Keep holding.');
+    cancelAnimationFrame(st.raf); st.last=performance.now(); st.raf=requestAnimationFrame(loop);};
+  const stop=()=>{if(!st.holding) return; st.holding=false; hw.classList.remove('holding');
+    if(!st.done) text('Hold a little longer','Press and hold until the ring is complete.');};
+  function complete(){st.done=true;st.holding=false;hw.classList.remove('holding');hw.classList.add('done');
+    hbl.innerHTML=`<span style="display:grid;place-items:center;gap:6px">${ICON.tick.replace('<svg','<svg style="width:40px;height:40px;stroke:currentColor"')}Ready</span>`;
+    text('Your pairing is ready',lineFor(curPair)); tb.lastElementChild.style.visibility='hidden';
+    setTimeout(async()=>{hw.classList.add('gone'); await wait(400); hw.style.display='none';       // ring gives way to the pairing visual
+      const dv=$('dviz'); dv.hidden=false; $('dcont').hidden=false; await frame(); dv.classList.add('in');},900);}
+  hw.classList.remove('auto');
+  hw.addEventListener('pointerdown',start); hw.addEventListener('pointerup',stop); hw.addEventListener('pointercancel',stop);
+}
+async function closeDispense(){seqId++;busy=true;D.classList.remove('show');await wait(250);
+  D.querySelectorAll('.lc').forEach(n=>n.remove());D.classList.remove('open');
+  place(D,rectIn(smellSrc),'40px');D.style.backgroundColor='#292929';await wait(DUR);
+  smellSrc.style.visibility='';D.remove();D=null;busy=false;}
+
+/* ================= end screen: the dispense takeover settles into the options ================= */
+const vizHTML=p=>`<div class="viz"><i class="a" style="background:${p.base.col}"></i><i class="b" style="background:${p.comb.col}"></i><span class="vb">${burst()}</span>
+  <div class="vname"><span class="lbl">Your pairing</span><p class="pname">${esc(p.base.name)} + ${esc(p.comb.name)}</p></div>
+  <span class="vnote">Placeholder · combined scent visual</span></div>`;
+async function toEnd(){if(!D) return; busy=true; const p=curPair;
+  D.classList.remove('show'); await wait(300); D.querySelectorAll('.lc').forEach(n=>n.remove());
+  D.classList.remove('open'); D.style.backgroundColor='#EDE5D5'; await wait(600);
+  D.insertAdjacentHTML('beforeend',`<div class="lc end">
+    <div class="top"><span class="kick">Complete</span>${LOGO}<button class="pill dark" data-act="finish">Finish</button></div>
+    <div class="svgrid">${vizHTML(p)}
+    <div class="svside"><h2>What would you like to do?</h2>
+    <div class="ecards">
+      <button class="ecard" data-act="buy"><span class="ic">${ICON.bag}</span><span><h3>Buy</h3><p>Shop this pairing</p></span></button>
+      <button class="ecard" data-act="save"><span class="ic">${ICON.qrcode}</span><span><h3>Save &amp; share</h3><p>Scan a QR code or send by email</p></span></button>
+    </div></div></div></div>`);
+  await frame(); D.classList.add('show'); busy=false;}
+
+/* buy and save & share: the card grows into a full screen with the visual on the left */
+let SV=null, svSrc=null, svRoot=null, svView=null;
+function svBody(view){const p=curPair;
+  if(view==='save') return `<h2>Take your pairing with you</h2>
+    <p class="desc">Save ${esc(p.base.name)} layered with ${esc(p.comb.name)} to come back to, or share it with a friend.</p>
+    <div class="svqr"><div class="qr">${qr()}</div><p>Scan with your phone camera to save this pairing.</p></div>
+    <div class="svor">or</div>
+    <span class="lbl">Send it to your email</span>
+    <form class="field" id="emailForm"><input id="email" type="email" placeholder="Tap to enter your email" autocomplete="off" readonly inputmode="none"><button class="pill dark" type="submit">Send</button></form>
+    <p class="note" id="emailNote"></p>`;
+  return `<h2>Buy your pairing</h2>
+    <p class="desc">Both colognes, ready to layer at home.</p>
+    <div class="items">${[['Signature',p.base],['Combiner',p.comb]].map(([k,s])=>`<div class="item"><span class="sw" style="background:${s.col}"></span>
+      <div><small>${k} · Cologne 100ml</small><h3>${esc(s.name)}</h3></div><span class="pr">£—</span></div>`).join('')}</div>
+    <div class="row"><button class="pill dark" data-act="pay">Pay here</button><button class="pill" data-act="pay">Pay at the till</button></div>
+    <p class="note" id="payNote">Placeholder: payment handoff (kiosk or till) still to be decided.</p>
+    <button class="svlink" data-act="toSave">${ICON.qrcode}Not ready to buy? Save &amp; share this pairing</button>`;}
+const svTitle=v=>v==='save'?'Save &amp; share':'Buy';
+function svHTML(view){return `<div class="lc sv">
+  <div class="top"><span class="kick" id="svKick">${svTitle(view)}</span>${LOGO}${pillBtn('closeSave','Back',1)}</div>
+  <div class="svgrid">${vizHTML(curPair)}<div class="svside" id="svSide">${svBody(view)}</div></div></div>`;}
+async function openTake(card,view){busy=true; svSrc=card; svRoot=svView=view;
+  SV=layer(rectIn(card),'26px',CARD,'sv-layer'); card.style.visibility='hidden'; await frame();
+  place(SV,{top:0,left:0,width:W(),height:H()},'40px'); SV.style.backgroundColor='#EDE5D5'; await wait(DUR);
+  SV.innerHTML=svHTML(view); await frame(); SV.classList.add('show'); busy=false;}
+async function swapTake(view){busy=true; const side=$('svSide'); side.style.transition='opacity .25s'; side.style.opacity=0; await wait(250);
+  svView=view; side.innerHTML=svBody(view); $('svKick').innerHTML=svTitle(view); side.style.opacity=1; await wait(250); busy=false;}
+async function closeSave(){ if(KB) await closeKb();
+  if(svView!==svRoot) return swapTake(svRoot);                // Back from save (opened via Buy) returns to Buy
+  busy=true; SV.classList.remove('show'); await wait(250); SV.innerHTML='';
+  place(SV,rectIn(svSrc),'26px'); SV.style.backgroundColor=CARD; await wait(DUR);
+  svSrc.style.visibility=''; SV.remove(); SV=null; busy=false;}
+
+/* ================= on-screen email keypad ================= */
+let KB=null, kbVal='', kbShift=false;
+const KROWS=[['1','2','3','4','5','6','7','8','9','0'],['q','w','e','r','t','y','u','i','o','p'],['a','s','d','f','g','h','j','k','l','@'],
+  ['⇧','z','x','c','v','b','n','m','.','⌫'],['.com','_','-','space','Done']];
+const validEmail=v=>/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(v);
+function kbRender(){const v=KB.querySelector('.kb-val');
+  v.classList.toggle('empty',!kbVal); v.querySelector('span').textContent=kbVal||'name@example.com';
+  KB.querySelector('[data-k="send"]').disabled=!validEmail(kbVal);
+  KB.querySelectorAll('.kb-row [data-k]').forEach(b=>{const k=b.dataset.k; if(k.length===1&&/[a-z]/.test(k)) b.textContent=kbShift?k.toUpperCase():k;});
+  KB.querySelector('[data-k="⇧"]').classList.toggle('on',kbShift);
+  const inp=$('email'); if(inp) inp.value=kbVal;}
+async function openKb(){if(KB) return; kbVal=$('email').value||''; $('email').classList.add('focus');
+  KB=document.createElement('div'); KB.className='kb-wrap';
+  const key=k=>{const cls=k==='space'?'sp':['⇧','⌫','.com'].includes(k)?'w':k==='Done'?'w done':'';
+    const label=k==='⌫'?svg('<path d="M9 6h11v12H9l-6-6z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/>'):k==='⇧'?svg('<path d="M12 4l7 8h-4v7H9v-7H5z"/>'):k==='space'?'':k;
+    return `<button class="${cls}" data-k="${k}" aria-label="${k}">${label}</button>`;};
+  KB.innerHTML=`<div class="kb-scrim" data-k="Done"></div><div class="kb">
+    <div class="kb-bar"><span class="lbl">Email</span><div class="kb-val"><span></span></div><button class="pill dark" data-k="send">Send</button></div>
+    <div class="kb-chips">${['@gmail.com','@icloud.com','@outlook.com','@hotmail.com','.co.uk'].map(c=>`<button data-k="${c}">${c}</button>`).join('')}</div>
+    ${KROWS.map(r=>`<div class="kb-row">${r.map(key).join('')}</div>`).join('')}</div>`;
+  panel.append(KB); kbRender(); await frame(); KB.classList.add('on');
+  KB.addEventListener('click',e=>{e.stopPropagation(); const b=e.target.closest('[data-k]'); if(!b) return; kbPress(b.dataset.k);});}
+function kbPress(k){
+  if(k==='Done') return closeKb();
+  if(k==='send') return kbSend();
+  if(k==='⌫') kbVal=kbVal.slice(0,-1);
+  else if(k==='⇧') kbShift=!kbShift;
+  else if(k==='space') {}                                    // emails have no spaces; kept for a familiar layout
+  else {let c=k; if(kbShift&&c.length===1){c=c.toUpperCase(); kbShift=false;}
+    if(c.startsWith('@')&&kbVal.includes('@')) c=c.slice(1);  // domain chip after an @ already typed
+    kbVal+=c;}
+  kbRender();}
+function kbSend(){if(!validEmail(kbVal)) return; const v=kbVal; closeKb();
+  $('emailNote').textContent=`Sent to ${v}. (Prototype: nothing is actually sent.)`;}
+async function closeKb(){if(!KB) return; const k=KB; KB=null; k.classList.remove('on'); $('email')?.classList.remove('focus'); await wait(450); k.remove();}
+document.addEventListener('keydown',e=>{if(!KB) return;
+  if(e.key==='Backspace') kbPress('⌫'); else if(e.key==='Enter') kbSend(); else if(e.key==='Escape') kbPress('Done');
+  else if(e.key.length===1&&e.key!==' ') {kbVal+=e.key; kbRender();} else return; e.preventDefault();});
+
+/* ================= after dispense: save, buy, staff ================= */
+function qr(){let r='',seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+  const fin=(x,y)=>`<rect x="${x}" y="${y}" width="7" height="7" fill="none" stroke="#292929" stroke-width="1"/><rect x="${x+2}" y="${y+2}" width="3" height="3" fill="#292929"/>`;
+  for(let y=0;y<25;y++)for(let x=0;x<25;x++){const f=(x<8&&y<8)||(x>16&&y<8)||(x<8&&y>16); if(!f&&rnd()>.52) r+=`<rect x="${x}" y="${y}" width="1" height="1" fill="#292929"/>`;}
+  return `<svg viewBox="-.5 -.5 26 26" shape-rendering="crispEdges">${r}${fin(.5,.5)}${fin(17.5,.5)}${fin(.5,17.5)}</svg>`;}
+let sheet=null;
+async function openSheet(html){sheet=document.createElement('div');sheet.className='sheet-wrap';
+  sheet.innerHTML=`<div class="scrim" data-act="sheetClose"></div><div class="sheet">${html}</div>`;panel.append(sheet);await frame();sheet.classList.add('on');}
+async function closeSheet(){if(!sheet) return;const s=sheet;sheet=null;s.classList.remove('on');await wait(450);s.remove();}
+const sheetBar=k=>`<div class="tbar"><span class="kick">${k}</span><span></span>${pillBtn('sheetClose','Back')}</div>`;
+function saveSheet(){const p=curPair;openSheet(`${sheetBar('Save & share')}
+  <div class="cols"><div class="qr">${qr()}</div>
+    <div><h2>Scan to save your pairing</h2><p class="desc" style="margin-top:10px;color:var(--ink-2)">${esc(p.base.name)} layered with ${esc(p.comb.name)}.</p>
+      <span class="lbl" style="margin-top:22px">Or send it to your email</span>
+      <form class="field" id="emailForm"><input id="email" type="email" placeholder="name@example.com" autocomplete="off"><button class="pill dark" type="submit">Send</button></form>
+      <p class="note" id="emailNote"></p></div></div>`);}
+function buySheet(){const p=curPair;openSheet(`${sheetBar('Buy')}
+  <h2>Your pairing</h2>
+  <div class="items">${[['Signature',p.base],['Combiner',p.comb]].map(([k,s])=>`<div class="item"><span class="sw" style="background:${s.col}"></span>
+    <div><small>${k} · Cologne 100ml</small><h3>${esc(s.name)}</h3></div><span class="pr">£—</span></div>`).join('')}</div>
+  <div class="row"><button class="pill dark" data-act="pay">Pay here</button><button class="pill" data-act="pay">Pay at the till</button></div>
+  <p class="note" id="payNote">Placeholder: payment handoff (kiosk or till) still to be decided.</p>`);}
+panel.addEventListener('submit',e=>{e.preventDefault();const v=$('email').value.trim(); if(!v){openKb();return;}
+  $('emailNote').textContent=v?`Sent to ${v}. (Prototype: nothing is actually sent.)`:'Enter an email address to send your pairing.';});
+
+/* =========================================================
+   DEVICE ISSUES — one out-of-service screen for customers, staff screens behind it
+   The kiosk checks the device whenever it returns to Attract (after Finish or the idle reset).
+   Any issue (an empty cartridge or a device fault) swaps Attract for the out-of-service screen,
+   so no customer starts a journey that can't finish. Levels and codes are placeholders.
+   ========================================================= */
+let device={kind:null};
+function setDevice(kind){
+  if(!kind){device={kind:null}; return;}
+  device={kind, at:new Date().toTimeString().slice(0,5), fixed:new Set(), tested:false,
+    sig:[72,64,55,81,18,47,90,66,38,59], com:kind==='empty'?[44,77,0]:[44,77,62]};}
+const LOCK=svg('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>');
+const DEL=svg('<path d="M9 6h11v12H9l-6-6z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/>');
+function carts(){const sig=BASES.map((s,i)=>({id:'s'+i,s,kind:'signature',v:device.sig[i]})),
+  com=COMBS.map((s,i)=>({id:'c'+i,s,kind:'combiner',v:device.com[i]}));
+  [...sig,...com].forEach(c=>{if(device.fixed.has(c.id)) c.v=100;}); return {sig,com};}
+function issues(){const out=[], {sig,com}=carts();
+  if(device.kind==='fault'&&!device.tested) out.push({code:'DIF-02',title:'Diffuser not responding',
+    text:"Check the diffuser is switched on and its cable is connected, then run a test.",act:'staffTest',btn:'Run test'});
+  [...com,...sig].filter(c=>c.v===0).forEach(c=>out.push({code:'CRT-01 · '+c.kind,title:`${esc(c.s.name)} is empty`,
+    text:`Replace the ${c.kind} cartridge, then mark it as refilled.`,act:'staffRefill',btn:'Mark as refilled',id:c.id}));
+  return out;}
+
+/* customer-facing: calm, no actions, just the discreet staff entry */
+$('s-oos').innerHTML=ORBS.map(([c,s,x,y],i)=>`<i class="orb" style="width:${s}px;height:${s}px;left:${x}%;top:${y}%;margin:${-s/2}px 0 0 ${-s/2}px;
+  background:radial-gradient(circle at 35% 30%, color-mix(in srgb, ${c} 45%, ${CARD}), ${c})"></i>`).join('')+
+  `<div class="attract-copy">${LOGO}<h1>We'll be back shortly</h1>
+   <p class="sub">This station is taking a short break. Our consultants will be happy to help you find your perfect pairing.</p></div>
+   <button class="staffbtn" data-act="toPin">${LOCK}Staff</button>`;
+
+/* staff PIN */
+let pin='';
+$('s-pin').innerHTML=`<div class="top"><span class="kick">Staff access</span>${LOGO}<button class="pill" data-act="pinCancel">Cancel</button></div>
+  <div class="pinbox"><span class="ic">${LOCK}</span><h2>Enter your staff PIN</h2><div class="pdots" id="pdots2"><i></i><i></i><i></i><i></i></div>
+    <div class="pkeys">${['1','2','3','4','5','6','7','8','9','','0','del'].map(k=>k?`<button ${k==='del'?'class="ghost" aria-label="Delete"':''} data-pin="${k}">${k==='del'?DEL:k}</button>`:'<span></span>').join('')}</div>
+    <p class="note">Prototype · any four digits</p></div>`;
+const pinDraw=()=>[...$('pdots2').children].forEach((d,i)=>d.classList.toggle('on',i<pin.length));
+function pinReset(){pin=''; pinDraw();}
+async function pinPress(k){if(pin.length>=4) return;
+  if(k==='del') pin=pin.slice(0,-1); else pin+=k; pinDraw();
+  if(pin.length===4){await wait(250); go('s-staff');}}
+
+/* staff status: what's wrong, what to do, and the cartridge levels */
+function renderStaff(){if(!device.kind) return;
+  const list=issues(), blocked=list.length>0, {sig,com}=carts(), stale=device.kind==='fault'&&!device.tested;
+  const lows=[...sig,...com].filter(c=>c.v>0&&c.v<25);
+  const row=c=>{const st=c.v===0?'empty':c.v<25?'low':'';
+    const chip=device.fixed.has(c.id)?'Refilled':c.v===0?'Empty':c.v<25?'Low':'OK';
+    return `<div class="crow ${st}"><b style="background:${c.s.col}"></b><span class="cn">${esc(c.s.name)}</span>
+      <span class="cbar"><i style="width:${c.v}%"></i></span><span class="cv">${c.v}%</span><span class="cchip">${chip}</span></div>`;};
+  $('s-staff').innerHTML=`<div class="top"><span class="kick">Staff · Kiosk status</span>${LOGO}<button class="pill" data-act="staffOut">Log out</button></div>
+  <div class="stf"><div class="stf-l">
+    <div class="stf-status ${blocked?'':'ok'}"><span class="kick">Kiosk status</span>
+      <h2>${blocked?'Out of service':'Ready for customers'}</h2>
+      <p>${blocked?`Customers are seeing the “back shortly” screen. Detected at ${device.at}.`:'All issues are resolved. You can hand the kiosk back to customers.'}</p></div>
+    ${list.map(x=>`<div class="stf-issue"><div><span class="code">${x.code}</span><h3>${x.title}</h3><p>${x.text}</p></div>
+      <button class="pill dark" data-act="${x.act}" ${x.id?`data-id="${x.id}"`:''}>${x.btn}</button></div>`).join('')}
+    ${lows.length?`<p class="stf-low">Refill soon: ${lows.map(c=>`<b>${esc(c.s.name)}</b> (${c.v}%)`).join(', ')}. This won't stop the kiosk.</p>`:''}
+    <button class="cta" data-act="staffDone" ${blocked?'disabled':''}>Return to kiosk <span class="dot">${ICON.right}</span></button>
+    ${blocked?'<p class="stf-hint">Available once every issue is resolved</p>':''}
+  </div>
+  <div class="stf-r ${stale?'stale':''}"><div class="hd"><h3>Cartridge levels</h3><span>${stale?`Last reading ${device.at} · diffuser offline`:'Live'}</span></div>
+    <p class="cgrp">Combiners</p>${com.map(row).join('')}
+    <p class="cgrp">Signatures</p>${sig.map(row).join('')}</div></div>`;}
+async function staffTest(btn){btn.disabled=true; btn.textContent='Testing…'; await wait(1800); device.tested=true; renderStaff();}
+function staffDone(){setDevice(null); go('s-attract');}
+
+/* ================= reset + routing ================= */
+async function reset(){busy=true; seqId++;
+  const els=document.querySelectorAll('.layer,.panel>.pair,.sheet-wrap,.kb-wrap'); KB=null;
+  els.forEach(el=>{el.style.transition='opacity .35s';el.style.opacity=0}); await wait(els.length?380:0); els.forEach(el=>el.remove());
+  document.querySelectorAll('.bcard,.scard,.sitem,.pslide').forEach(c=>c.style.visibility='');
+  base=comb=baseLayer=combLayer=ov=curPair=L=D=sheet=SV=null; busy=false;}
+
+panel.addEventListener('click',e=>{
+  if(current==='s-attract'&&!busy){go('s-land');return;}
+  if(e.target.id==='email'){openKb();return;}
+  const si=e.target.closest('.sitem'); if(si&&!busy){openPair(si,PAIRS[+si.dataset.pair]);return;}
+  const pk=e.target.closest('[data-pin]'); if(pk){pinPress(pk.dataset.pin); return;}
+  const btn=e.target.closest('[data-act]'); const a=btn?.dataset.act; if(!a||busy) return;
+  ({toBase:()=>go('s-base'), toSug:()=>go('s-sug'), toLand:()=>go('s-land'),
+    closeBase, selectBase, changeBase:()=>combLayer&&baseLayer?changeBaseFromComb():baseLayer?changeBase():go('s-base'), closeComb, selectComb, pairBack, closePair,
+    smell:()=>openDispense(btn), dclose:closeDispense, again:smellAgain,
+    save:()=>openTake(btn,'save'), buy:()=>openTake(btn,'buy'), toSave:()=>swapTake('save'), closeSave, toEnd, sheetClose:closeSheet,
+    pay:()=>{$('payNote').textContent=`${btn.textContent} selected. The payment step would continue from here.`},
+    staff:()=>{if(btn.classList.contains('notified')) return; btn.classList.add('notified'); btn.querySelector('p').textContent='Notified · a consultant is on the way'},
+    another:async()=>{await reset();go('s-base')}, finish:async()=>{await reset();go('s-attract')},
+    restart:async()=>{await reset();go('s-land')},
+    toPin:()=>go('s-pin'), pinCancel:()=>go('s-attract'), staffOut:()=>go('s-attract'), staffDone,
+    staffTest:()=>staffTest(btn), staffRefill:()=>{device.fixed.add(btn.dataset.id); renderStaff();}})[a]?.();
+});
+document.querySelector('.jump').onclick=async e=>{if(busy) return;
+  const sm=e.target.closest('[data-smell]'); if(sm){smellMode=sm.dataset.smell; document.querySelectorAll('[data-smell]').forEach(b=>b.classList.toggle('on',b===sm)); return;}
+  const dv=e.target.closest('[data-device]'); if(dv){await reset(); setDevice(dv.dataset.device); go('s-attract'); return;}
+  const b=e.target.closest('[data-jump]'); if(!b) return; await reset(); setDevice(null); go(b.dataset.jump);};
+
+/* idle → attract */
+let idleT=null;
+function resetIdle(){clearTimeout(idleT); if(current!=='s-attract'&&current!=='s-oos') idleT=setTimeout(async()=>{await reset();go('s-attract')},120000);}
+document.addEventListener('pointerdown',resetIdle);
+
+/* fit iPad frame to window */
+function fit(){const s=Math.min(1,(innerWidth-24)/1180,(innerHeight-80)/820);
+  $('stage').style.transform=`translate(-50%,-50%) translateY(10px) scale(${s})`;}
+addEventListener('resize',fit); fit();
+renderCar(carDrag.s);
+</script>
+</body>
+</html>
